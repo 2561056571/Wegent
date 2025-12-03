@@ -4,23 +4,29 @@
 
 import logging
 from datetime import datetime
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 
-from app.models.wiki import WikiProject, WikiGeneration, WikiGenerationStatus, WikiGenerationType, WikiContent
+from app.core.wiki_config import wiki_settings
+from app.core.wiki_prompts import get_wiki_task_prompt
+from app.models.wiki import (
+    WikiContent,
+    WikiGeneration,
+    WikiGenerationStatus,
+    WikiGenerationType,
+    WikiProject,
+)
+from app.schemas.task import TaskCreate
 from app.schemas.wiki import (
+    WikiContentWriteRequest,
     WikiGenerationCreate,
     WikiProjectCreate,
-    WikiContentWriteRequest,
 )
 from app.services.adapters.task_kinds import task_kinds_service
 from app.services.adapters.team_kinds import team_kinds_service
-from app.schemas.task import TaskCreate
-from app.core.wiki_prompts import get_wiki_task_prompt
-from app.core.wiki_config import wiki_settings
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +61,10 @@ class WikiService:
                 detail="Wiki content writer server address is not configured",
             )
 
-        endpoint_path = wiki_settings.CONTENT_WRITE_ENDPOINT or "/api/internal/wiki/generations/contents"
+        endpoint_path = (
+            wiki_settings.CONTENT_WRITE_ENDPOINT
+            or "/api/internal/wiki/generations/contents"
+        )
         content_meta.update(
             {
                 "content_server": base_url,
@@ -69,12 +78,8 @@ class WikiService:
         ext["content_write"] = content_meta
         return ext
 
-
     def create_wiki_generation(
-        self,
-        wiki_db: Session,
-        obj_in: WikiGenerationCreate,
-        user_id: int
+        self, wiki_db: Session, obj_in: WikiGenerationCreate, user_id: int
     ) -> WikiGeneration:
         """
         Create wiki document generation task
@@ -101,20 +106,26 @@ class WikiService:
                 source_id=obj_in.source_id,
                 source_domain=obj_in.source_domain,
                 project_type=obj_in.project_type,
-                source_type=obj_in.source_type
+                source_type=obj_in.source_type,
             )
 
             # 2. Check if there's already a running or pending generation for this project (any user)
-            existing_active_generation = wiki_db.query(WikiGeneration).filter(
-                WikiGeneration.project_id == project.id,
-                WikiGeneration.status.in_([WikiGenerationStatus.PENDING, WikiGenerationStatus.RUNNING])
-            ).first()
+            existing_active_generation = (
+                wiki_db.query(WikiGeneration)
+                .filter(
+                    WikiGeneration.project_id == project.id,
+                    WikiGeneration.status.in_(
+                        [WikiGenerationStatus.PENDING, WikiGenerationStatus.RUNNING]
+                    ),
+                )
+                .first()
+            )
 
             if existing_active_generation:
                 raise HTTPException(
                     status_code=400,
                     detail=f"A wiki generation task for this project is already {existing_active_generation.status.lower()}. "
-                           f"Please wait for it to complete or cancel it (generation ID: {existing_active_generation.id}) before creating a new one."
+                    f"Please wait for it to complete or cancel it (generation ID: {existing_active_generation.id}) before creating a new one.",
                 )
 
             # 3. Determine team to use
@@ -125,14 +136,12 @@ class WikiService:
 
                 # Verify team exists
                 team = team_kinds_service.get_team_by_id(
-                    db=main_db,
-                    team_id=team_id,
-                    user_id=user_id
+                    db=main_db, team_id=team_id, user_id=user_id
                 )
                 if not team:
                     raise HTTPException(
                         status_code=404,
-                        detail=f"Default wiki team (ID: {team_id}) not found. Please check WIKI_DEFAULT_TEAM_ID in your .env file"
+                        detail=f"Default wiki team (ID: {team_id}) not found. Please check WIKI_DEFAULT_TEAM_ID in your .env file",
                     )
 
             # 4. Create generation record
@@ -145,7 +154,7 @@ class WikiService:
                 generation_type=WikiGenerationType(obj_in.generation_type),
                 source_snapshot=source_snapshot_dict,
                 status=WikiGenerationStatus.PENDING,
-                ext=obj_in.ext or {}
+                ext=obj_in.ext or {},
             )
             wiki_db.add(generation)
             wiki_db.flush()
@@ -155,16 +164,26 @@ class WikiService:
                 base_ext=obj_in.ext,
             )
 
-            logger.info(f"Created wiki generation {generation.id} for project {project.id}")
+            logger.info(
+                f"Created wiki generation {generation.id} for project {project.id}"
+            )
 
             # 5. Determine user ID for task creation
             # Use configured DEFAULT_USER_ID if set (non-zero), otherwise use current user
-            task_user_id = wiki_settings.DEFAULT_USER_ID if wiki_settings.DEFAULT_USER_ID > 0 else user_id
+            task_user_id = (
+                wiki_settings.DEFAULT_USER_ID
+                if wiki_settings.DEFAULT_USER_ID > 0
+                else user_id
+            )
 
             # 6. Create task
             task_id = task_kinds_service.create_task_id(main_db, task_user_id)
 
-            content_meta = generation.ext.get("content_write", {}) if isinstance(generation.ext, dict) else {}
+            content_meta = (
+                generation.ext.get("content_write", {})
+                if isinstance(generation.ext, dict)
+                else {}
+            )
             wiki_prompt = self._generate_wiki_prompt(
                 project_name=obj_in.project_name,
                 generation_type=obj_in.generation_type,
@@ -180,14 +199,18 @@ class WikiService:
                 team_id=team_id,
                 git_url=obj_in.source_url,
                 git_repo=obj_in.project_name,
-                git_repo_id=int(obj_in.source_id) if obj_in.source_id and obj_in.source_id.isdigit() else 0,
+                git_repo_id=(
+                    int(obj_in.source_id)
+                    if obj_in.source_id and obj_in.source_id.isdigit()
+                    else 0
+                ),
                 git_domain=obj_in.source_domain or "",
                 branch_name=obj_in.source_snapshot.branch_name or "main",
                 prompt=wiki_prompt,
                 type="online",
                 task_type="code",
                 auto_delete_executor="false",
-                source="wiki_generator"
+                source="wiki_generator",
             )
 
             # Get the user for task creation (using task_user_id)
@@ -195,21 +218,20 @@ class WikiService:
             if not task_user:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Wiki task user (ID: {task_user_id}) not found. Please check WIKI_DEFAULT_USER_ID in your .env file"
+                    detail=f"Wiki task user (ID: {task_user_id}) not found. Please check WIKI_DEFAULT_USER_ID in your .env file",
                 )
 
             try:
                 task_kinds_service.create_task_or_append(
-                    db=main_db,
-                    obj_in=task_create,
-                    user=task_user,
-                    task_id=task_id
+                    db=main_db, obj_in=task_create, user=task_user, task_id=task_id
                 )
             except Exception as e:
                 logger.error(f"Failed to create task: {e}")
                 wiki_db.rollback()
                 main_db.rollback()
-                raise HTTPException(status_code=400, detail=f"Failed to create task: {str(e)}")
+                raise HTTPException(
+                    status_code=400, detail=f"Failed to create task: {str(e)}"
+                )
 
             # 7. Update generation record
             generation.task_id = task_id
@@ -219,7 +241,9 @@ class WikiService:
             wiki_db.refresh(generation)
             main_db.commit()
 
-            logger.info(f"Wiki generation {generation.id} is now RUNNING with task {task_id}")
+            logger.info(
+                f"Wiki generation {generation.id} is now RUNNING with task {task_id}"
+            )
 
             return generation
 
@@ -234,13 +258,13 @@ class WikiService:
         source_id: Optional[str] = None,
         source_domain: Optional[str] = None,
         project_type: str = "git",
-        source_type: str = "github"
+        source_type: str = "github",
     ) -> WikiProject:
         """Get or create project record"""
         # First check if it already exists
-        project = db.query(WikiProject).filter(
-            WikiProject.source_url == source_url
-        ).first()
+        project = (
+            db.query(WikiProject).filter(WikiProject.source_url == source_url).first()
+        )
 
         if project:
             return project
@@ -253,7 +277,7 @@ class WikiService:
             source_url=source_url,
             source_id=source_id,
             source_domain=source_domain,
-            is_active=True
+            is_active=True,
         )
         db.add(project)
         db.flush()  # Ensure the project gets an ID
@@ -281,7 +305,10 @@ class WikiService:
                     status_code=400,
                     detail="Wiki content writer server address is not configured",
                 )
-            endpoint_path = wiki_settings.CONTENT_WRITE_ENDPOINT or "/internal/wiki/generations/contents"
+            endpoint_path = (
+                wiki_settings.CONTENT_WRITE_ENDPOINT
+                or "/internal/wiki/generations/contents"
+            )
             endpoint = f"{server}{endpoint_path}"
 
         return get_wiki_task_prompt(
@@ -361,10 +388,9 @@ class WikiService:
             }
 
             for section in payload.sections:
-                content_item = (
-                    existing_by_key.get((section.type, section.title))
-                    or existing_by_title.get(section.title)
-                )
+                content_item = existing_by_key.get(
+                    (section.type, section.title)
+                ) or existing_by_title.get(section.title)
 
                 if content_item:
                     content_item.type = section.type
@@ -395,7 +421,9 @@ class WikiService:
                     generation.id,
                     exc,
                 )
-                raise HTTPException(status_code=400, detail="Failed to persist wiki contents")
+                raise HTTPException(
+                    status_code=400, detail="Failed to persist wiki contents"
+                )
 
         summary = payload.summary
         previous_status = generation.status
@@ -464,7 +492,9 @@ class WikiService:
         content_meta["status_after_write"] = (
             generation.status.value
             if isinstance(generation.status, WikiGenerationStatus)
-            else (str(generation.status) if generation.status is not None else "UNKNOWN")
+            else (
+                str(generation.status) if generation.status is not None else "UNKNOWN"
+            )
         )
 
         try:
@@ -476,7 +506,9 @@ class WikiService:
                 generation.id,
                 exc,
             )
-            raise HTTPException(status_code=400, detail="Failed to commit wiki contents")
+            raise HTTPException(
+                status_code=400, detail="Failed to commit wiki contents"
+            )
 
         logger.info(
             "[wiki] saved contents for generation %s (created=%s, updated=%s, titles=%s, status %s -> %s)",
@@ -494,7 +526,7 @@ class WikiService:
         user_id: int,
         project_id: Optional[int] = None,
         skip: int = 0,
-        limit: int = 10
+        limit: int = 10,
     ) -> Tuple[List[WikiGeneration], int]:
         """
         Get generation records list (paginated)
@@ -515,17 +547,17 @@ class WikiService:
             query = query.filter(WikiGeneration.project_id == project_id)
 
         total = query.count()
-        generations = query.order_by(
-            WikiGeneration.created_at.desc()
-        ).offset(skip).limit(limit).all()
+        generations = (
+            query.order_by(WikiGeneration.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
 
         return generations, total
 
     def get_generation_detail(
-        self,
-        db: Session,
-        generation_id: int,
-        user_id: int
+        self, db: Session, generation_id: int, user_id: int
     ) -> WikiGeneration:
         """
         Get generation record detail
@@ -547,10 +579,7 @@ class WikiService:
         return generation
 
     def get_generation_contents(
-        self,
-        db: Session,
-        generation_id: int,
-        user_id: int
+        self, db: Session, generation_id: int, user_id: int
     ) -> List[WikiContent]:
         """
         Get all contents of a wiki generation
@@ -561,9 +590,12 @@ class WikiService:
         # First verify the generation exists (and belongs to user if user_id != 0)
         generation = self.get_generation_detail(db, generation_id, user_id)
 
-        contents = db.query(WikiContent).filter(
-            WikiContent.generation_id == generation_id
-        ).order_by(WikiContent.created_at).all()
+        contents = (
+            db.query(WikiContent)
+            .filter(WikiContent.generation_id == generation_id)
+            .order_by(WikiContent.created_at)
+            .all()
+        )
 
         return contents
 
@@ -573,12 +605,10 @@ class WikiService:
         skip: int = 0,
         limit: int = 10,
         project_type: Optional[str] = None,
-        source_type: Optional[str] = None
+        source_type: Optional[str] = None,
     ) -> Tuple[List[WikiProject], int]:
         """Get project list (paginated)"""
-        query = db.query(WikiProject).filter(
-            WikiProject.is_active == True
-        )
+        query = db.query(WikiProject).filter(WikiProject.is_active == True)
 
         if project_type:
             query = query.filter(WikiProject.project_type == project_type)
@@ -587,22 +617,22 @@ class WikiService:
             query = query.filter(WikiProject.source_type == source_type)
 
         total = query.count()
-        projects = query.order_by(
-            WikiProject.created_at.desc()
-        ).offset(skip).limit(limit).all()
+        projects = (
+            query.order_by(WikiProject.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
 
         return projects, total
 
-    def get_project_detail(
-        self,
-        db: Session,
-        project_id: int
-    ) -> WikiProject:
+    def get_project_detail(self, db: Session, project_id: int) -> WikiProject:
         """Get project detail"""
-        project = db.query(WikiProject).filter(
-            WikiProject.id == project_id,
-            WikiProject.is_active == True
-        ).first()
+        project = (
+            db.query(WikiProject)
+            .filter(WikiProject.id == project_id, WikiProject.is_active == True)
+            .first()
+        )
 
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
@@ -610,10 +640,7 @@ class WikiService:
         return project
 
     def cancel_wiki_generation(
-        self,
-        wiki_db: Session,
-        generation_id: int,
-        user_id: int
+        self, wiki_db: Session, generation_id: int, user_id: int
     ) -> WikiGeneration:
         """
         Cancel a wiki generation task
@@ -633,19 +660,26 @@ class WikiService:
 
         try:
             # 1. Get generation and verify ownership
-            generation = wiki_db.query(WikiGeneration).filter(
-                WikiGeneration.id == generation_id,
-                WikiGeneration.user_id == user_id
-            ).first()
+            generation = (
+                wiki_db.query(WikiGeneration)
+                .filter(
+                    WikiGeneration.id == generation_id,
+                    WikiGeneration.user_id == user_id,
+                )
+                .first()
+            )
 
             if not generation:
                 raise HTTPException(status_code=404, detail="Generation not found")
 
             # 2. Check if generation can be cancelled
-            if generation.status not in [WikiGenerationStatus.PENDING, WikiGenerationStatus.RUNNING]:
+            if generation.status not in [
+                WikiGenerationStatus.PENDING,
+                WikiGenerationStatus.RUNNING,
+            ]:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Cannot cancel generation with status {generation.status}. Only PENDING or RUNNING generations can be cancelled."
+                    detail=f"Cannot cancel generation with status {generation.status}. Only PENDING or RUNNING generations can be cancelled.",
                 )
 
             # 3. Stop related task execution first (before updating generation status)
@@ -653,22 +687,28 @@ class WikiService:
                 try:
                     # Delete the task to stop execution
                     task_kinds_service.delete_task(
-                        db=main_db,
-                        task_id=generation.task_id,
-                        user_id=user_id
+                        db=main_db, task_id=generation.task_id, user_id=user_id
                     )
-                    logger.info(f"Stopped task {generation.task_id} for generation {generation_id}")
+                    logger.info(
+                        f"Stopped task {generation.task_id} for generation {generation_id}"
+                    )
                 except HTTPException as e:
                     # If task not found (404), it's already deleted, continue with cancellation
                     if e.status_code == 404:
-                        logger.warning(f"Task {generation.task_id} not found, already deleted. Continuing with cancellation.")
+                        logger.warning(
+                            f"Task {generation.task_id} not found, already deleted. Continuing with cancellation."
+                        )
                     else:
                         # For other HTTP errors, raise the error
-                        logger.error(f"Failed to stop task {generation.task_id}: {str(e)}")
+                        logger.error(
+                            f"Failed to stop task {generation.task_id}: {str(e)}"
+                        )
                         raise
                 except Exception as e:
                     # For unexpected errors, log warning but continue with cancellation
-                    logger.warning(f"Error stopping task {generation.task_id}: {str(e)}. Continuing with cancellation.")
+                    logger.warning(
+                        f"Error stopping task {generation.task_id}: {str(e)}. Continuing with cancellation."
+                    )
 
             # 4. Update generation status to CANCELLED (only after task is stopped)
             generation.status = WikiGenerationStatus.CANCELLED
@@ -690,7 +730,9 @@ class WikiService:
             wiki_db.rollback()
             main_db.rollback()
             logger.error(f"Failed to cancel generation {generation_id}: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to cancel generation: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Failed to cancel generation: {str(e)}"
+            )
         finally:
             main_db.close()
 

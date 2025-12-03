@@ -3,13 +3,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from datetime import datetime
-from typing import Optional, List, Dict, Any, Literal
+from typing import Any, Dict, List, Literal, Optional
+
 from pydantic import BaseModel, Field
 
 
 # ========== Project Schemas ==========
 class WikiProjectCreate(BaseModel):
     """Create wiki project record"""
+
     project_name: str
     project_type: str = "git"
     source_type: str = "github"
@@ -22,6 +24,7 @@ class WikiProjectCreate(BaseModel):
 
 class WikiProjectInDB(BaseModel):
     """Wiki project record in database"""
+
     id: int
     project_name: str
     project_type: str
@@ -42,6 +45,7 @@ class WikiProjectInDB(BaseModel):
 # ========== Generation Schemas ==========
 class SourceSnapshot(BaseModel):
     """Source snapshot information (generic)"""
+
     type: str  # git/local/url
     # Git project fields
     branch_name: Optional[str] = None
@@ -61,6 +65,7 @@ class SourceSnapshot(BaseModel):
 
 class WikiGenerationCreate(BaseModel):
     """Create wiki document generation task"""
+
     project_name: str = Field(..., description="Project name")
     source_url: str = Field(..., description="Source URL")
     source_id: Optional[str] = Field(None, description="Source ID")
@@ -68,7 +73,9 @@ class WikiGenerationCreate(BaseModel):
     project_type: str = Field(default="git", description="Project type")
     source_type: str = Field(default="github", description="Source type")
     generation_type: str = Field(default="full", description="Generation type")
-    language: Optional[str] = Field(default="en", description="Target language for documentation generation")
+    language: Optional[str] = Field(
+        default="en", description="Target language for documentation generation"
+    )
     source_snapshot: SourceSnapshot = Field(..., description="Source snapshot")
     team_id: Optional[int] = Field(None, description="Team ID")
     ext: Optional[Dict[str, Any]] = Field(None, description="Extension fields")
@@ -76,6 +83,7 @@ class WikiGenerationCreate(BaseModel):
 
 class WikiGenerationInDB(BaseModel):
     """Wiki generation record in database"""
+
     id: int
     project_id: int
     user_id: int
@@ -96,6 +104,7 @@ class WikiGenerationInDB(BaseModel):
 # ========== Content Schemas ==========
 class WikiContentSection(BaseModel):
     """Wiki content section for write API"""
+
     type: str
     title: str
     content: str
@@ -104,6 +113,7 @@ class WikiContentSection(BaseModel):
 
 class WikiContentSummary(BaseModel):
     """Wiki content write summary"""
+
     status: Optional[Literal["COMPLETED", "FAILED"]] = None
     error_message: Optional[str] = None
     model: Optional[str] = None
@@ -113,6 +123,7 @@ class WikiContentSummary(BaseModel):
 
 class WikiContentWriteRequest(BaseModel):
     """Request payload for writing wiki contents"""
+
     generation_id: int
     sections: List[WikiContentSection]
     summary: Optional[WikiContentSummary] = None
@@ -120,6 +131,7 @@ class WikiContentWriteRequest(BaseModel):
 
 class WikiContentCreate(BaseModel):
     """Create wiki content"""
+
     generation_id: int
     type: str = "chapter"
     title: str
@@ -130,6 +142,7 @@ class WikiContentCreate(BaseModel):
 
 class WikiContentInDB(BaseModel):
     """Wiki content in database"""
+
     id: int
     generation_id: int
     type: str
@@ -147,22 +160,26 @@ class WikiContentInDB(BaseModel):
 # ========== Response Schemas ==========
 class WikiGenerationDetail(WikiGenerationInDB):
     """Wiki generation detail (includes project info and contents)"""
+
     project: Optional[WikiProjectInDB] = None
     contents: List[WikiContentInDB] = []
 
 
 class WikiGenerationListResponse(BaseModel):
     """Wiki generation list response"""
+
     total: int
     items: List[WikiGenerationInDB]
 
 
 class WikiProjectDetail(WikiProjectInDB):
     """Wiki project detail (includes generation records)"""
+
     generations: List[WikiGenerationInDB] = []
 
 
 class WikiProjectListResponse(BaseModel):
     """Wiki project list response"""
+
     total: int
     items: List[WikiProjectInDB]

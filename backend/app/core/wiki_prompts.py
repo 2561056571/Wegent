@@ -94,7 +94,8 @@ If the documentation cannot be completed, still call the tool and set the summar
 
 
 # Task prompt template for wiki generation
-WIKI_TASK_PROMPT_TEMPLATE = Template("""You are a professional technical documentation expert.
+WIKI_TASK_PROMPT_TEMPLATE = Template(
+    """You are a professional technical documentation expert.
 Generate comprehensive documentation for the code repository `${project_name}` while orchestrating a multi-agent workflow that produces ready-to-publish Markdown in the language `${language}`.
 
 
@@ -250,15 +251,17 @@ if __name__ == "__main__":
 - Use a programmatic HTTP client to avoid quoting issues. Ensure payloads embed the full Markdown for each section—no references to local files or cached drafts.
 
 If work is blocked, still call the tool with `summary.status = "FAILED"` and a precise `error_message`.
-Start analyzing the project and generating documentation.""")
+Start analyzing the project and generating documentation."""
+)
 
 
 # Additional notes for different generation types
 GENERATION_TYPE_NOTES = {
     "full": "",
     "incremental": "\n\nNote: This is an incremental update task, please focus on recent code changes.",
-    "custom": "\n\nNote: This is a custom scope documentation generation task."
+    "custom": "\n\nNote: This is a custom scope documentation generation task.",
 }
+
 
 def get_wiki_task_prompt(
     project_name: str,
@@ -286,9 +289,14 @@ def get_wiki_task_prompt(
     """
     context = {
         "project_name": project_name,
-        "generation_id": generation_id if generation_id is not None else "UNKNOWN_GENERATION_ID",
+        "generation_id": (
+            generation_id if generation_id is not None else "UNKNOWN_GENERATION_ID"
+        ),
         "content_endpoint": content_endpoint or "/internal/wiki/generations/contents",
-        "section_types": ", ".join(section_types or ["overview", "architecture", "module", "api", "guide", "deep"]),
+        "section_types": ", ".join(
+            section_types
+            or ["overview", "architecture", "module", "api", "guide", "deep"]
+        ),
         "auth_token": auth_token or "WIKI_CONTENT_INTERNAL_TOKEN",
         "language": language or "en",
     }
