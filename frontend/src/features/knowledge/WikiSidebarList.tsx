@@ -39,10 +39,10 @@ export function WikiSidebarList({
       {projects.map(project => (
         <li
           key={project.id}
-          className="p-2 rounded-md hover:bg-surface-hover cursor-pointer flex items-center"
+          className="p-2 rounded-md hover:bg-surface-hover cursor-pointer flex items-start"
           onClick={() => onProjectClick(project.id)}
         >
-          <div className="w-5 h-5 mr-2 flex-shrink-0 text-text-secondary">
+          <div className="w-5 h-5 mr-2 flex-shrink-0 text-text-secondary mt-0.5">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
@@ -57,19 +57,21 @@ export function WikiSidebarList({
               />
             </svg>
           </div>
-          {(() => {
-            const displayName = getProjectDisplayName(project);
-            if (displayName.hasSlash) {
-              return (
-                <span className="flex items-center">
-                  <span>{displayName.parts[0]}</span>
-                  <span className="mx-1 text-text-muted">/</span>
-                  <span>{displayName.parts[1]}</span>
-                </span>
-              );
-            }
-            return <span>{displayName.parts[0]}</span>;
-          })()}
+          <span className="min-w-0 break-words text-sm leading-relaxed">
+            {(() => {
+              const displayName = getProjectDisplayName(project);
+              if (displayName.hasSlash) {
+                return (
+                  <>
+                    <span className="text-text-muted">{displayName.parts[0]}</span>
+                    <span className="text-text-muted"> / </span>
+                    <span>{displayName.parts[1]}</span>
+                  </>
+                );
+              }
+              return displayName.parts[0];
+            })()}
+          </span>
         </li>
       ))}
     </ul>

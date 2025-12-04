@@ -128,7 +128,15 @@ class WikiService:
                     f"Please wait for it to complete or cancel it (generation ID: {existing_active_generation.id}) before creating a new one.",
                 )
 
-            # 3. Determine team to use
+            # 3. Determine user ID for task creation
+            # Use configured DEFAULT_USER_ID if set (non-zero), otherwise use current user
+            task_user_id = (
+                wiki_settings.DEFAULT_USER_ID
+                if wiki_settings.DEFAULT_USER_ID > 0
+                else user_id
+            )
+
+            # 4. Determine team to use
             team_id = obj_in.team_id
             if not team_id:
                 # Use configured default team ID
@@ -136,7 +144,7 @@ class WikiService:
 
                 # Verify team exists
                 team = team_kinds_service.get_team_by_id(
-                    db=main_db, team_id=team_id, user_id=user_id
+                    db=main_db, team_id=team_id, user_id=task_user_id
                 )
                 if not team:
                     raise HTTPException(
@@ -144,7 +152,7 @@ class WikiService:
                         detail=f"Default wiki team (ID: {team_id}) not found. Please check WIKI_DEFAULT_TEAM_ID in your .env file",
                     )
 
-            # 4. Create generation record
+            # 5. Create generation record
             source_snapshot_dict = obj_in.source_snapshot.model_dump()
 
             generation = WikiGeneration(
@@ -166,14 +174,6 @@ class WikiService:
 
             logger.info(
                 f"Created wiki generation {generation.id} for project {project.id}"
-            )
-
-            # 5. Determine user ID for task creation
-            # Use configured DEFAULT_USER_ID if set (non-zero), otherwise use current user
-            task_user_id = (
-                wiki_settings.DEFAULT_USER_ID
-                if wiki_settings.DEFAULT_USER_ID > 0
-                else user_id
             )
 
             # 6. Create task

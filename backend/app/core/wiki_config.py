@@ -15,7 +15,7 @@ class WikiSettings(BaseSettings):
     ENABLED: bool = True
 
     # Wiki task configuration (env vars: WIKI_DEFAULT_TEAM_ID, WIKI_DEFAULT_AGENT_TYPE, WIKI_DEFAULT_USER_ID)
-    DEFAULT_TEAM_ID: int = 1  # Default execution team ID
+    DEFAULT_TEAM_ID: int = 0  # Default execution team ID
     DEFAULT_AGENT_TYPE: str = "ClaudeCode"  # Default agent type
     DEFAULT_USER_ID: int = 0  # Default user ID for task creation (0 = use current user)
 
