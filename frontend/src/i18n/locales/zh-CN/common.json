@@ -571,7 +571,9 @@
     "diagram": "图表",
     "click_to_expand": "点击展开",
     "copy_code": "复制代码",
-    "copied": "已复制!"
+    "copied": "已复制!",
+    "access_denied_title": "仓库访问被拒绝",
+    "access_denied_description": "Wiki任务用户没有访问此仓库的权限。请将该用户添加到GitLab项目或配置其他用户。"
   },
   "shells": {
     "title": "Shell 管理",

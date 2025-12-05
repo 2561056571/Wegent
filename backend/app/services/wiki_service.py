@@ -152,6 +152,45 @@ class WikiService:
                         detail=f"Default wiki team (ID: {team_id}) not found. Please check WIKI_DEFAULT_TEAM_ID in your .env file",
                     )
 
+            # 4.1 Check if task_user has access to the repository (for GitLab projects)
+            if obj_in.source_type in ("gitlab", "github") and task_user_id != user_id:
+                task_user = main_db.query(User).filter(User.id == task_user_id).first()
+                if task_user:
+                    access_result = self._check_task_user_repo_access(
+                        task_user=task_user,
+                        source_type=obj_in.source_type,
+                        source_url=obj_in.source_url,
+                        source_id=obj_in.source_id,
+                        source_domain=obj_in.source_domain,
+                        project_name=obj_in.project_name,
+                    )
+                    if not access_result.get("has_access", False):
+                        # Get the Git username that needs to be added to the repository
+                        git_username = access_result.get("username", "")
+                        platform_name = "GitLab" if obj_in.source_type == "gitlab" else "GitHub"
+
+                        # Build detailed error message
+                        if git_username:
+                            error_detail = (
+                                f"Wiki task user does not have access to repository '{obj_in.project_name}'. "
+                                f"Please add {platform_name} user '{git_username}' to the repository with at least Reporter/Read access level. "
+                                f"Alternatively, set WIKI_DEFAULT_USER_ID=0 in your .env file to use the current user's credentials instead."
+                            )
+                        else:
+                            error_detail = (
+                                f"Wiki task user (ID: {task_user_id}) does not have access to repository '{obj_in.project_name}'. "
+                                f"The task user may not have {platform_name} credentials configured. "
+                                f"Please configure {platform_name} token for this user, or set WIKI_DEFAULT_USER_ID=0 to use the current user's credentials."
+                            )
+
+                        raise HTTPException(
+                            status_code=403,
+                            detail=error_detail
+                        )
+                    logger.info(
+                        f"Task user {task_user_id} has {access_result.get('access_level_name')} access to repository {obj_in.project_name}"
+                    )
+
             # 5. Create generation record
             source_snapshot_dict = obj_in.source_snapshot.model_dump()
 
@@ -249,6 +288,134 @@ class WikiService:
 
         finally:
             main_db.close()
+
+   
+    def _check_task_user_repo_access(
+            self,
+            task_user,
+            source_type: str,
+            source_url: str,
+            source_id: Optional[str],
+            source_domain: Optional[str],
+            project_name: str,
+        ) -> Dict[str, Any]:
+            """
+            Check if task_user has access to the specified repository.
+
+            Args:
+                task_user: User object for the task execution user
+                source_type: Repository source type ('gitlab' or 'github')
+                source_url: Repository source URL
+                source_id: Repository ID (from source platform)
+                source_domain: Git domain (e.g., gitlab.com, github.com)
+                project_name: Repository name (e.g., "owner/repo")
+
+            Returns:
+                Dictionary with access check results:
+                - has_access: bool
+                - access_level: int
+                - access_level_name: str
+                - username: str
+            """
+            # If task_user has no git_info configured, they can't have access
+            if not task_user.git_info:
+                return {
+                    "has_access": False,
+                    "access_level": 0,
+                    "access_level_name": "No Access",
+                    "username": task_user.user_name,
+                    "error": "Git information not configured for task user",
+                }
+
+            # Find token for the task_user matching the source_type and source_domain
+            git_token = None
+            for git_info in task_user.git_info:
+                if git_info.get("type") == source_type:
+                    if source_domain and git_info.get("git_domain") == source_domain:
+                        git_token = git_info.get("git_token")
+                        break
+                    elif not git_token:
+                        # Fallback to first matching type token if no domain match
+                        git_token = git_info.get("git_token")
+
+            if not git_token:
+                platform_name = "GitLab" if source_type == "gitlab" else "GitHub"
+                return {
+                    "has_access": False,
+                    "access_level": 0,
+                    "access_level_name": "No Access",
+                    "username": task_user.user_name,
+                    "error": f"No {platform_name} token configured for task user for domain {source_domain}",
+                }
+
+            # Determine project identifier
+            # For GitLab: use source_id (numeric project ID) or project path
+            # For GitHub: use project_name (owner/repo format)
+            project_identifier = source_id if source_id else project_name
+
+            if not project_identifier:
+                # Try to extract project path from source_url
+                # URL format: https://gitlab.com/namespace/project.git or https://github.com/owner/repo.git
+                try:
+                    import re
+                    match = re.search(r"(?:https?://[^/]+/)?(.+?)(?:\.git)?$", source_url)
+                    if match:
+                        project_identifier = match.group(1)
+                except Exception as e:
+                    logger.warning(f"Failed to extract project ID from URL: {e}")
+                    return {
+                        "has_access": False,
+                        "access_level": 0,
+                        "access_level_name": "No Access",
+                        "username": task_user.user_name,
+                        "error": f"Could not determine project ID from URL: {source_url}",
+                    }
+
+            if not project_identifier:
+                return {
+                    "has_access": False,
+                    "access_level": 0,
+                    "access_level_name": "No Access",
+                    "username": task_user.user_name,
+                    "error": "Project identifier is required for access check",
+                }
+
+            try:
+                if source_type == "gitlab":
+                    from app.repository.gitlab_provider import GitLabProvider
+                    provider = GitLabProvider()
+                    result = provider.check_user_project_access(
+                        token=git_token,
+                        git_domain=source_domain or "",
+                        project_id=project_identifier,
+                    )
+                elif source_type == "github":
+                    from app.repository.github_provider import GitHubProvider
+                    provider = GitHubProvider()
+                    result = provider.check_user_project_access(
+                        token=git_token,
+                        git_domain=source_domain or "",
+                        repo_name=project_name,
+                    )
+                else:
+                    return {
+                        "has_access": True,  # Skip check for unsupported source types
+                        "access_level": 0,
+                        "access_level_name": "Unknown",
+                        "username": task_user.user_name,
+                        "error": f"Access check not supported for source type: {source_type}",
+                    }
+                return result
+            except Exception as e:
+                logger.error(f"Failed to check repository access: {e}")
+                return {
+                    "has_access": False,
+                    "access_level": 0,
+                    "access_level_name": "No Access",
+                    "username": task_user.user_name,
+                    "error": str(e),
+                }
+
 
     def _get_or_create_project(
         self,

@@ -4,6 +4,7 @@
 
 'use client';
 
+import { useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { WikiProject, WikiGeneration } from '@/types/wiki';
 import { getProjectDisplayName } from './wikiUtils';
@@ -11,26 +12,64 @@ import { getProjectDisplayName } from './wikiUtils';
 interface WikiProjectListProps {
   projects: (WikiProject & { generations?: WikiGeneration[] })[];
   loading: boolean;
+  loadingMore?: boolean;
   error: string | null;
   onAddRepo: () => void;
   onProjectClick: (projectId: number) => void;
   onCancelClick: (projectId: number, e: React.MouseEvent) => void;
   cancellingIds: Set<number>;
   searchTerm?: string;
+  hasMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 export default function WikiProjectList({
   projects,
   loading,
+  loadingMore = false,
   error,
   onAddRepo,
   onProjectClick,
   onCancelClick,
   cancellingIds,
   searchTerm = '',
+  hasMore = false,
+  onLoadMore,
 }: WikiProjectListProps) {
   const { t } = useTranslation();
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
 
+  // Setup intersection observer for infinite scroll
+  const setupObserver = useCallback(() => {
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+    }
+
+    if (!hasMore || !onLoadMore) return;
+
+    observerRef.current = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore && onLoadMore) {
+          onLoadMore();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (loadMoreTriggerRef.current) {
+      observerRef.current.observe(loadMoreTriggerRef.current);
+    }
+  }, [hasMore, loadingMore, onLoadMore]);
+
+  useEffect(() => {
+    setupObserver();
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, [setupObserver]);
   // Filter projects
   const filteredProjects = projects.filter(project => {
     const matchesSearch =
@@ -165,6 +204,17 @@ export default function WikiProjectList({
             )}
         </div>
       ))}
+      {/* Load more trigger - invisible element that triggers loading when scrolled into view */}
+      {hasMore && onLoadMore && (
+        <div ref={loadMoreTriggerRef} className="col-span-full h-10" />
+      )}
+
+      {/* Loading more indicator */}
+      {loadingMore && (
+        <div className="col-span-full flex justify-center py-4">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+        </div>
+      )}
     </div>
   );
 }

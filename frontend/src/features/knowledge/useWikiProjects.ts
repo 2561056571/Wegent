@@ -4,7 +4,7 @@
 
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { WikiProject, WikiGeneration } from '@/types/wiki';
 import { GitRepoInfo, GitBranch } from '@/types/api';
 import {
@@ -16,6 +16,7 @@ import {
 
 interface UseWikiProjectsOptions {
   accountId?: number;
+  pageSize?: number;
 }
 
 /**
@@ -53,15 +54,24 @@ function extractDomain(gitUrl: string): string {
 }
 
 export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
-  const { accountId } = options;
+  const { accountId, pageSize = 20 } = options;
 
   // State
   const [projects, setProjects] = useState<(WikiProject & { generations?: WikiGeneration[] })[]>(
     []
   );
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cancellingIds, setCancellingIds] = useState<Set<number>>(new Set());
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+
+  // Prevent duplicate requests
+  const loadingRef = useRef(false);
 
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -79,14 +89,11 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [pendingCancelProjectId, setPendingCancelProjectId] = useState<number | null>(null);
 
-  // Load projects with generations
-  const loadProjects = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await fetchWikiProjects();
-
-      const projectsWithGenerations = await Promise.all(
-        response.items.map(async project => {
+  // Helper function to load generations for projects
+  const loadProjectsWithGenerations = useCallback(
+    async (projectItems: WikiProject[]) => {
+      return Promise.all(
+        projectItems.map(async project => {
           try {
             const generationsResponse = await fetchWikiGenerations(project.id, 1, 10, accountId);
             return {
@@ -102,16 +109,57 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
           }
         })
       );
+    },
+    [accountId]
+  );
+
+  // Load projects with generations (initial load or refresh)
+  const loadProjects = useCallback(async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+
+    try {
+      setLoading(true);
+      setCurrentPage(1);
+      const response = await fetchWikiProjects(1, pageSize);
+
+      const projectsWithGenerations = await loadProjectsWithGenerations(response.items);
 
       setProjects(projectsWithGenerations);
+      setTotalCount(response.total);
+      setHasMore(response.items.length < response.total);
       setError(null);
     } catch (err) {
       console.error('Failed to load wiki projects:', err);
       setError('Failed to load projects');
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
-  }, [accountId]);
+  }, [pageSize, loadProjectsWithGenerations]);
+
+  // Load more projects (pagination)
+  const loadMoreProjects = useCallback(async () => {
+    if (loadingRef.current || !hasMore || loadingMore) return;
+    loadingRef.current = true;
+
+    try {
+      setLoadingMore(true);
+      const nextPage = currentPage + 1;
+      const response = await fetchWikiProjects(nextPage, pageSize);
+
+      const projectsWithGenerations = await loadProjectsWithGenerations(response.items);
+
+      setProjects(prev => [...prev, ...projectsWithGenerations]);
+      setCurrentPage(nextPage);
+      setHasMore(projects.length + response.items.length < response.total);
+    } catch (err) {
+      console.error('Failed to load more wiki projects:', err);
+    } finally {
+      setLoadingMore(false);
+      loadingRef.current = false;
+    }
+  }, [currentPage, pageSize, hasMore, loadingMore, projects.length, loadProjectsWithGenerations]);
 
   // Open add repo modal
   const handleAddRepo = useCallback(() => {
@@ -225,7 +273,7 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
         const requestData = {
           project_name: selectedRepo!.git_repo,
           source_url: sourceUrl,
-          source_id: selectedRepo!.git_repo,
+          source_id: String(selectedRepo!.git_repo_id),
           source_domain: sourceDomain,
           project_type: 'git',
           source_type: sourceType,
@@ -253,7 +301,12 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
         await loadProjects();
       } catch (err) {
         console.error('Failed to add repository:', err);
-        setFormErrors({ submit: 'Failed to add repository, please try again' });
+        // Extract error message from the error object
+        let errorMessage = 'Failed to add repository, please try again';
+        if (err instanceof Error && err.message) {
+          errorMessage = err.message;
+        }
+        setFormErrors({ submit: errorMessage });
       } finally {
         setIsSubmitting(false);
       }
@@ -319,8 +372,12 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
     // State
     projects,
     loading,
+    loadingMore,
     error,
     cancellingIds,
+    // Pagination state
+    hasMore,
+    totalCount,
     // Modal state
     isModalOpen,
     formData,
@@ -333,6 +390,7 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
     pendingCancelProjectId,
     // Methods
     loadProjects,
+    loadMoreProjects,
     handleAddRepo,
     handleCloseModal,
     handleInputChange,

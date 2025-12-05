@@ -128,7 +128,17 @@ Generated wiki content is organized into sections:
    - Check `WIKI_DEFAULT_TEAM_ID` points to valid team
    - Verify `WIKI_DEFAULT_USER_ID` user exists (or set to 0)
 
-3. **Content Write Failed**
+3. **Repository Access Denied (403)**
+   - When using `WIKI_DEFAULT_USER_ID`, the configured user must have access to the GitLab/GitHub repository
+   - Error message: "Wiki task user 'username' does not have access to repository"
+   - Solutions:
+     - Add the wiki task user to the GitLab project with at least Reporter access level
+     - Or add the wiki task user to the GitHub repository with at least Read access level
+     - Or set `WIKI_DEFAULT_USER_ID=0` to use the current user's credentials instead
+   - Note: This check applies to both GitLab and GitHub repositories when `WIKI_DEFAULT_USER_ID` is different from the current user
+
+
+4. **Content Write Failed**
    - Verify `WIKI_CONTENT_WRITE_BASE_URL` is accessible
    - Check `WIKI_INTERNAL_API_TOKEN` matches
 

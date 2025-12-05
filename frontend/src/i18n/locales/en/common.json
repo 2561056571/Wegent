@@ -570,7 +570,9 @@
     "diagram": "Diagram",
     "click_to_expand": "Click to expand",
     "copy_code": "Copy code",
-    "copied": "Copied!"
+    "copied": "Copied!",
+    "access_denied_title": "Repository Access Denied",
+    "access_denied_description": "The wiki task user does not have access to this repository. Please add the user to the GitLab project or configure a different user."
   },
   "shells": {
     "title": "Shell Management",

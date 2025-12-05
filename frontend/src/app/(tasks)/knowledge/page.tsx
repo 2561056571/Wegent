@@ -32,8 +32,10 @@ export default function WikiPage() {
   const {
     projects,
     loading,
+    loadingMore,
     error,
     cancellingIds,
+    hasMore,
     isModalOpen,
     formData,
     formErrors,
@@ -42,6 +44,7 @@ export default function WikiPage() {
     selectedRepo,
     selectedBranch,
     loadProjects,
+    loadMoreProjects,
     handleAddRepo,
     handleCloseModal,
     handleRepoChange,
@@ -134,12 +137,15 @@ export default function WikiPage() {
             <WikiProjectList
               projects={projects}
               loading={loading}
+              loadingMore={loadingMore}
               error={error}
               onAddRepo={handleAddRepo}
               onProjectClick={navigateToWikiDetail}
               onCancelClick={handleCancelClick}
               cancellingIds={cancellingIds}
               searchTerm={mainSearchTerm}
+              hasMore={hasMore}
+              onLoadMore={loadMoreProjects}
             />
           </div>
         </div>
