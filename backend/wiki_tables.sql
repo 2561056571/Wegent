@@ -4,12 +4,10 @@
 
 -- Wiki Feature Database Schema
 -- This script creates the necessary tables for the wiki feature.
+-- Wiki tables are now stored in the main database (task_manager).
 --
 -- Usage:
---   mysql -u user -p wiki < wiki_tables.sql
---
--- Note: Make sure to create the 'wiki' database first:
---   CREATE DATABASE wiki CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+--   mysql -u user -p task_manager < wiki_tables.sql
 
 -- Wiki Projects Table
 -- Stores project metadata for wiki generation
@@ -73,9 +71,3 @@ CREATE TABLE IF NOT EXISTS wiki_contents (
     INDEX idx_generation_id (generation_id),
     INDEX idx_type (type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- Create wiki database (if running as admin)
--- Uncomment the following lines if you need to create the database:
--- CREATE DATABASE IF NOT EXISTS wiki CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
--- GRANT ALL PRIVILEGES ON wiki.* TO 'your_user'@'localhost';
--- FLUSH PRIVILEGES;

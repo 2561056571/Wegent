@@ -12,7 +12,7 @@ The Wiki feature enables automatic generation of comprehensive documentation for
 
 ### Database Design
 
-Wiki uses a separate database (`wiki` database by default) with the following tables:
+Wiki tables are stored in the main database (`task_manager`) alongside other application tables:
 
 - **wiki_projects**: Stores project metadata (repository info, source type, etc.)
 - **wiki_generations**: Tracks document generation tasks and their status
@@ -30,8 +30,8 @@ Wiki uses a separate database (`wiki` database by default) with the following ta
 All wiki-related configuration uses the `WIKI_` prefix in environment variables:
 
 ```bash
-# Wiki database (separate from main database)
-WIKI_DATABASE_URL=mysql+pymysql://user:password@localhost/wiki
+# Wiki tables are stored in the main database (task_manager)
+# No separate database configuration needed
 
 # Feature toggle
 WIKI_ENABLED=True
@@ -77,16 +77,18 @@ WIKI_INTERNAL_API_TOKEN=weki
 
 ## Database Setup
 
+Wiki tables are stored in the main database (`task_manager`).
+
 ### Option 1: Automatic Migration (Development)
 
 In development mode with `DB_AUTO_MIGRATE=True`, tables are created automatically on startup.
 
 ### Option 2: Manual SQL (Production)
 
-Use the provided SQL script:
+Use the provided SQL script to create wiki tables in the main database:
 
 ```bash
-mysql -u user -p wiki < backend/wiki_tables.sql
+mysql -u user -p task_manager < backend/wiki_tables.sql
 ```
 
 ## Generation Workflow
@@ -121,8 +123,8 @@ Generated wiki content is organized into sections:
 ### Common Issues
 
 1. **Database Connection Failed**
-   - Verify `WIKI_DATABASE_URL` is correct
-   - Ensure wiki database exists and is accessible
+   - Verify `DATABASE_URL` is correct (wiki uses main database)
+   - Ensure task_manager database exists and is accessible
 
 2. **Task Creation Failed**
    - Check `WIKI_DEFAULT_TEAM_ID` points to valid team

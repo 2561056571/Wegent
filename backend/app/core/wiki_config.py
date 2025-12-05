@@ -8,8 +8,9 @@ from pydantic_settings import BaseSettings
 class WikiSettings(BaseSettings):
     """Wiki feature independent configuration"""
 
-    # Wiki database configuration (env var: WIKI_DATABASE_URL)
-    DATABASE_URL: str = "mysql+pymysql://user:password@localhost/wiki"
+
+    # Wiki tables now use main database (task_manager)
+    # DATABASE_URL configuration removed - wiki tables share the main database
 
     # Wiki feature toggle (env var: WIKI_ENABLED)
     ENABLED: bool = True
