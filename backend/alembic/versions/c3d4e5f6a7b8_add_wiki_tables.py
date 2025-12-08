@@ -11,13 +11,13 @@ Create Date: 2025-12-03 10:00:00.000000+08:00
 """
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = 'c3d4e5f6a7b8'
-down_revision: Union[str, Sequence[str], None] = 'a1b2c3d4e5f6'
+revision: str = "c3d4e5f6a7b8"
+down_revision: Union[str, Sequence[str], None] = "b2c3d4e5f6a7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -26,7 +26,8 @@ def upgrade() -> None:
     """Add wiki_projects, wiki_generations, and wiki_contents tables."""
 
     # Create wiki_projects table
-    op.execute("""
+    op.execute(
+        """
     CREATE TABLE IF NOT EXISTS wiki_projects (
         id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Primary key auto increment ID',
         project_name VARCHAR(200) NOT NULL DEFAULT '' COMMENT 'Project name',
@@ -46,10 +47,12 @@ def upgrade() -> None:
         INDEX idx_project_type (project_type),
         INDEX idx_source_type (source_type)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """)
+    """
+    )
 
     # Create wiki_generations table
-    op.execute("""
+    op.execute(
+        """
     CREATE TABLE IF NOT EXISTS wiki_generations (
         id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Primary key auto increment ID',
         project_id INT NOT NULL DEFAULT 0 COMMENT 'Associated project ID',
@@ -71,10 +74,12 @@ def upgrade() -> None:
         INDEX idx_created_at (created_at),
         INDEX idx_user_project (user_id, project_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """)
+    """
+    )
 
     # Create wiki_contents table
-    op.execute("""
+    op.execute(
+        """
     CREATE TABLE IF NOT EXISTS wiki_contents (
         id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Primary key auto increment ID',
         generation_id INT NOT NULL DEFAULT 0 COMMENT 'Associated generation ID',
@@ -89,7 +94,8 @@ def upgrade() -> None:
         INDEX idx_generation_id (generation_id),
         INDEX idx_type (type)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """)
+    """
+    )
 
 
 def downgrade() -> None:
@@ -102,28 +108,34 @@ def downgrade() -> None:
     # If tables have data, skip dropping to preserve existing data
 
     # Check and drop wiki_contents if empty
-    op.execute("""
+    op.execute(
+        """
     SET @table_empty = (SELECT COUNT(*) = 0 FROM wiki_contents);
     SET @drop_query = IF(@table_empty, 'DROP TABLE IF EXISTS wiki_contents', 'SELECT 1');
     PREPARE stmt FROM @drop_query;
     EXECUTE stmt;
     DEALLOCATE PREPARE stmt;
-    """)
+    """
+    )
 
     # Check and drop wiki_generations if empty
-    op.execute("""
+    op.execute(
+        """
     SET @table_empty = (SELECT COUNT(*) = 0 FROM wiki_generations);
     SET @drop_query = IF(@table_empty, 'DROP TABLE IF EXISTS wiki_generations', 'SELECT 1');
     PREPARE stmt FROM @drop_query;
     EXECUTE stmt;
     DEALLOCATE PREPARE stmt;
-    """)
+    """
+    )
 
     # Check and drop wiki_projects if empty
-    op.execute("""
+    op.execute(
+        """
     SET @table_empty = (SELECT COUNT(*) = 0 FROM wiki_projects);
     SET @drop_query = IF(@table_empty, 'DROP TABLE IF EXISTS wiki_projects', 'SELECT 1');
     PREPARE stmt FROM @drop_query;
     EXECUTE stmt;
     DEALLOCATE PREPARE stmt;
-    """)
+    """
+    )
