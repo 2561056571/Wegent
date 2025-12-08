@@ -8,11 +8,16 @@ FROM node:22-slim AS builder
 
 WORKDIR /app
 
-# 复制依赖文件并安装依赖
+# 复制依赖文件
 COPY frontend/package.json frontend/package-lock.json ./
+
+# 复制 postinstall 脚本（npm ci 会触发 postinstall 下载字体）
+COPY frontend/scripts ./scripts
+
+# 安装依赖
 RUN npm ci && npm cache clean --force
 
-# 复制源码并构建
+# 复制其余源码
 COPY frontend .
 # 修改 API URL 为 Docker 内部服务名
 RUN sed -i 's|NEXT_PUBLIC_API_URL=http://127.0.0.1:8000|NEXT_PUBLIC_API_URL=http://backend:8000|g' .env.local && npm run build
