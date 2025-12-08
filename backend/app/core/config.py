@@ -85,6 +85,7 @@ class Settings(BaseSettings):
 
     # Team sharing configuration
     TEAM_SHARE_BASE_URL: str = "http://localhost:3000/chat"
+    TASK_SHARE_BASE_URL: str = "http://localhost:3000"
     TEAM_SHARE_QUERY_PARAM: str = "teamShare"
 
     # AES encryption configuration for share tokens
@@ -112,6 +113,20 @@ class Settings(BaseSettings):
     # File upload configuration
     MAX_UPLOAD_FILE_SIZE_MB: int = 50  # Maximum file size in MB
     MAX_EXTRACTED_TEXT_LENGTH: int = 1000000  # Maximum extracted text length
+
+    # Attachment storage backend configuration
+    # Supported backends: "mysql" (default), "s3", "minio"
+    # If not configured or set to "mysql", binary data is stored in MySQL database
+    ATTACHMENT_STORAGE_BACKEND: str = "mysql"
+    # S3/MinIO configuration (only used when ATTACHMENT_STORAGE_BACKEND is "s3" or "minio")
+    ATTACHMENT_S3_ENDPOINT: str = (
+        ""  # e.g., "https://s3.amazonaws.com" or "http://minio:9000"
+    )
+    ATTACHMENT_S3_ACCESS_KEY: str = ""
+    ATTACHMENT_S3_SECRET_KEY: str = ""
+    ATTACHMENT_S3_BUCKET: str = "attachments"
+    ATTACHMENT_S3_REGION: str = "us-east-1"
+    ATTACHMENT_S3_USE_SSL: bool = True
 
     class Config:
         env_file = ".env"

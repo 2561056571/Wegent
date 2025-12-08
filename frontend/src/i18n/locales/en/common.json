@@ -3,6 +3,10 @@
     "name": "Wegent AI Assistant",
     "description": "A whole dev team of AI agents in your editor."
   },
+  "repos": {
+    "repository": "Select Repository",
+    "branch": "Select Branch"
+  },
   "actions": {
     "save": "Save",
     "saving": "Saving...",
@@ -43,7 +47,8 @@
     "code": "Code",
     "wiki": "Wiki",
     "settings": "Settings",
-    "docs": "Docs"
+    "docs": "Docs",
+    "admin": "Admin"
   },
   "sidebar": {
     "recent_visits": "Recent Visits",
@@ -156,7 +161,7 @@
   },
   "teams": {
     "title": "Team List",
-    "description": "View all teams and their bots",
+    "description": "Agent = Bot + Collaboration Mode. Combine different bots and collaboration patterns to accomplish various tasks",
     "loading": "Loading teams...",
     "active": "Active",
     "inactive": "Inactive",
@@ -287,7 +292,12 @@
     "no_branch": "No Branch Found",
     "no_match": "No matching results",
     "default": "(default)",
-    "set_token": "Set Token"
+    "set_token": "Set Token",
+    "configure_integration": "Configure Repository Integration",
+    "load_more": "Refresh repository list",
+    "refreshing": "Refreshing...",
+    "refresh_success": "Repository list refreshed",
+    "refresh_failed": "Failed to refresh, please try again"
   },
   "tasks": {
     "search_placeholder": "Search task",
@@ -327,6 +337,14 @@
     "not_supported": "Browser notifications are not supported in this browser.",
     "enable_success": "Browser notifications enabled successfully",
     "disable_success": "Browser notifications disabled"
+  },
+  "send_key": {
+    "title": "Message Send Shortcut",
+    "description": "Choose which keyboard shortcut sends messages in the chat",
+    "option_enter": "Enter to send (Shift+Enter for new line)",
+    "option_cmd_enter": "Cmd/Ctrl+Enter to send (Enter for new line)",
+    "save_success": "Send key preference saved",
+    "save_failed": "Failed to save send key preference"
   },
   "guide": {
     "title": "Welcome",
@@ -636,7 +654,8 @@
   },
   "shared_task": {
     "continue_chat": "Continue Chat",
-    "login_to_continue": "Login to Continue",
+    "login_to_continue": "Login to Chat",
+    "login": "Login",
     "read_only_view": "Read-only view",
     "login_prompt": "Login to copy this task to your workspace and continue the conversation.",
     "continue_prompt": "Click the button above to copy this task to your workspace and continue the conversation.",
@@ -661,7 +680,9 @@
     "copy_link": "Copy Link",
     "link_copied": "Share link copied!",
     "link_copied_desc": "You can now share this link with others",
-    "share_task": "Share Task",
+    "share_task": "Share",
+    "share_link": "Share Link",
+    "share_pdf": "Export PDF",
     "sharing": "Sharing...",
     "no_task_selected": "No task selected",
     "no_task_selected_desc": "Please select a task to share",
@@ -683,6 +704,40 @@
     "handler_no_teams": "No teams available",
     "handler_create_team_hint": "You need to create at least one team to copy this task.",
     "handler_copying": "Copying...",
-    "handler_copy_to_tasks": "Continue chat"
+    "handler_copy_to_tasks": "Continue chat",
+    "handler_code_settings": "Code Repository Settings",
+    "handler_repo_hint": "The system will try to auto-select the original task's repository. If you don't have access, please manually select another repository",
+    "handler_repo_required": "Please select a repository",
+    "handler_branch_required": "Please select a branch"
+  },
+  "inAppBrowser": {
+    "title": "Open in Default Browser",
+    "detectedApp": "Detected that you are opening in {{app}}",
+    "detectedGeneric": "Detected that you are opening in an in-app browser",
+    "whyTitle": "Why use the default browser?",
+    "whyDescription": "In-app browsers may restrict login functionality from working properly. For the best experience, we recommend opening in your default browser (Safari, Chrome, etc.).",
+    "howToOpen": "How to open in default browser?",
+    "instructions": {
+      "wechat": ["Tap the '···' menu in the top right corner", "Select 'Open in Browser'"],
+      "dingtalk": [
+        "Tap the '···' menu in the top right corner",
+        "Select 'Open in Default Browser'"
+      ],
+      "alipay": ["Tap the '···' menu in the top right corner", "Select 'Open in Browser'"],
+      "qq": ["Tap the '···' menu in the top right corner", "Select 'Open in Browser'"],
+      "weibo": ["Tap the '···' menu in the top right corner", "Select 'Open in Browser'"],
+      "facebook": ["Tap the menu button in the top right corner", "Select 'Open in Browser'"],
+      "instagram": ["Tap the '···' menu in the top right corner", "Select 'Open in Browser'"],
+      "twitter": ["Tap the 'Share' button in the top right corner", "Select 'Open in Browser'"],
+      "default": [
+        "Tap the menu button in the top right corner",
+        "Select 'Open in Browser' or 'Open in Default Browser'"
+      ]
+    },
+    "copyUrl": "Copy Link",
+    "urlCopied": "Link copied! You can paste and open it in your default browser.",
+    "copyFailed": "Failed to copy. Please manually copy the URL from the address bar.",
+    "continueAnyway": "Continue Anyway (may encounter login issues)",
+    "footerNote": "Opening in default browser ensures all features work properly"
   }
 }

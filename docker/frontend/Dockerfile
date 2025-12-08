@@ -8,13 +8,9 @@ FROM node:22-slim AS builder
 
 WORKDIR /app
 
-# 复制依赖文件
+# 复制依赖文件和 postinstall 所需的脚本
 COPY frontend/package.json frontend/package-lock.json ./
-
-# 复制 postinstall 脚本（npm ci 会触发 postinstall 下载字体）
 COPY frontend/scripts ./scripts
-
-# 安装依赖
 RUN npm ci && npm cache clean --force
 
 # 复制其余源码
