@@ -80,11 +80,10 @@ export default function WikiProjectList({
       project.source_type.toLowerCase().includes(searchTerm.toLowerCase());
 
     const hasValidGeneration =
-      project.generations &&
-      project.generations.length > 0 &&
-      (project.generations[0].status === 'RUNNING' ||
-        project.generations[0].status === 'COMPLETED' ||
-        project.generations[0].status === 'PENDING');
+    !project.generations ||
+    project.generations.length === 0 ||
+    (project.generations[0].status !== 'FAILED' &&
+      project.generations[0].status !== 'CANCELLED');
 
     return matchesSearch && hasValidGeneration;
   });
@@ -99,14 +98,6 @@ export default function WikiProjectList({
 
   if (error) {
     return <div className="bg-red-50 text-red-500 p-4 rounded-md">{error}</div>;
-  }
-
-  if (projects.length === 0) {
-    return (
-      <div className="text-center py-12 text-text-secondary">
-        <p>{t('wiki.no_projects')}</p>
-      </div>
-    );
   }
 
   return (
@@ -130,6 +121,15 @@ export default function WikiProjectList({
         <h3 className="font-medium text-lg mb-1">{t('wiki.add_repository')}</h3>
         <p className="text-sm text-text-secondary text-center">{t('wiki.add_repository_desc')}</p>
       </div>
+
+      {/* Empty state message - shown when no projects */}
+      {projects.length === 0 && (
+        <div className="col-span-1 md:col-span-1 lg:col-span-2 flex items-center justify-center h-[200px]">
+          <div className="text-center text-text-secondary">
+            <p>{t('wiki.no_projects')}</p>
+          </div>
+        </div>
+      )}
 
       {/* Project card list */}
       {filteredProjects.map(project => (

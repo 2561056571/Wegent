@@ -64,8 +64,23 @@ export default function WikiPage() {
     router.push(`/knowledge/${projectId}`);
   };
 
+  // Filter projects to show only those with user's generations
+  // This ensures the knowledge page only shows projects created by the current user
+  const userProjects = projects.filter(project => {
+    // Check if user has any generations for this project
+    return (
+      project.generations &&
+      project.generations.length > 0 &&
+      (project.generations[0].status === 'RUNNING' ||
+        project.generations[0].status === 'COMPLETED' ||
+        project.generations[0].status === 'PENDING' ||
+        project.generations[0].status === 'FAILED' ||
+        project.generations[0].status === 'CANCELLED')
+    );
+  });
+
   // Filter sidebar projects
-  const filteredSidebarProjects = projects.filter(project => {
+  const filteredSidebarProjects = userProjects.filter(project => {
     const matchesSearch = project.project_name
       .toLowerCase()
       .includes(sidebarSearchTerm.toLowerCase());
@@ -135,7 +150,7 @@ export default function WikiPage() {
 
             {/* Project list */}
             <WikiProjectList
-              projects={projects}
+              projects={userProjects}
               loading={loading}
               loadingMore={loadingMore}
               error={error}

@@ -558,7 +558,7 @@
     "adding": "添加中...",
     "language_en": "英文",
     "language_zh": "中文",
-    "repositories": "知识库列表",
+    "repositories": "Git 仓库",
     "search": "搜索...",
     "search_repositories": "搜索仓库...",
     "back_to_list": "返回列表",
