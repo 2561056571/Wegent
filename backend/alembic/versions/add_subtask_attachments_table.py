@@ -5,7 +5,7 @@
 """Add subtask_attachments table for file upload support
 
 Revision ID: add_subtask_attachments
-Revises: a1b2c3d4e5f6
+Revises: c3d4e5f6a7b8
 Create Date: 2025-12-03
 
 This migration creates the subtask_attachments table with:
@@ -22,7 +22,7 @@ from sqlalchemy.dialects.mysql import LONGBLOB, LONGTEXT
 
 # revision identifiers, used by Alembic.
 revision: str = 'add_subtask_attachments'
-down_revision: Union[str, None] = 'a1b2c3d4e5f6'
+down_revision: Union[str, None] = 'c3d4e5f6a7b8'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
