@@ -27,8 +27,30 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _table_exists(connection, table_name: str) -> bool:
+    """Check if a table exists in the database."""
+    result = connection.execute(
+        sa.text(
+            """
+            SELECT COUNT(*)
+            FROM INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = :table_name
+            """
+        ),
+        {"table_name": table_name},
+    )
+    return result.scalar() > 0
+
+
 def upgrade() -> None:
     """Create subtask_attachments table with proper column types for large data."""
+    connection = op.get_bind()
+    
+    # Skip if table already exists
+    if _table_exists(connection, "subtask_attachments"):
+        return
+    
     op.create_table(
         'subtask_attachments',
         sa.Column('id', sa.Integer(), nullable=False, autoincrement=True),
