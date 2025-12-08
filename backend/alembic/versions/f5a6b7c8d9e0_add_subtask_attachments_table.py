@@ -4,7 +4,7 @@
 
 """Add subtask_attachments table for file upload support
 
-Revision ID: add_subtask_attachments
+Revision ID: f5a6b7c8d9e0
 Revises: a1b2c3d4e5f6
 Create Date: 2025-12-03
 
@@ -21,7 +21,7 @@ from sqlalchemy.dialects.mysql import LONGBLOB, LONGTEXT
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "add_subtask_attachments"
+revision: str = "f5a6b7c8d9e0"
 down_revision: Union[str, None] = "a1b2c3d4e5f6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

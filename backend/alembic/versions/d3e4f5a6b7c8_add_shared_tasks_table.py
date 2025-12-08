@@ -1,7 +1,7 @@
 """add shared_tasks table for task sharing
 
-Revision ID: 2b3c4d5e6f7g
-Revises: add_subtask_attachments
+Revision ID: d3e4f5a6b7c8
+Revises: f5a6b7c8d9e0
 Create Date: 2025-12-04 12:00:00.000000+08:00
 
 """
@@ -13,8 +13,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "2b3c4d5e6f7g"
-down_revision: Union[str, Sequence[str], None] = "add_subtask_attachments"
+revision: str = "d3e4f5a6b7c8"
+down_revision: Union[str, Sequence[str], None] = "f5a6b7c8d9e0"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
