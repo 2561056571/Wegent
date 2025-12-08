@@ -25,44 +25,23 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-def _column_exists(connection, table_name: str, column_name: str) -> bool:
-    """Check if a column exists in a table."""
-    result = connection.execute(
-        sa.text(
-            """
-            SELECT COUNT(*)
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = DATABASE()
-            AND TABLE_NAME = :table_name
-            AND COLUMN_NAME = :column_name
-            """
-        ),
-        {"table_name": table_name, "column_name": column_name},
-    )
-    return result.scalar() > 0
-
-
 def upgrade() -> None:
     """Add storage backend columns to subtask_attachments table."""
-    connection = op.get_bind()
-
     # Add storage_key column (NOT NULL with empty string default)
     # Empty string means data is stored in MySQL binary_data column
-    if not _column_exists(connection, "subtask_attachments", "storage_key"):
-        op.add_column(
-            "subtask_attachments",
-            sa.Column("storage_key", sa.String(500), nullable=False, server_default=""),
-        )
+    op.add_column(
+        "subtask_attachments",
+        sa.Column("storage_key", sa.String(500), nullable=False, server_default=""),
+    )
 
     # Add storage_backend column (NOT NULL with 'mysql' default)
     # Indicates which storage backend is used: 'mysql', 's3', 'minio', etc.
-    if not _column_exists(connection, "subtask_attachments", "storage_backend"):
-        op.add_column(
-            "subtask_attachments",
-            sa.Column(
-                "storage_backend", sa.String(50), nullable=False, server_default="mysql"
-            ),
-        )
+    op.add_column(
+        "subtask_attachments",
+        sa.Column(
+            "storage_backend", sa.String(50), nullable=False, server_default="mysql"
+        ),
+    )
 
     # Note: server_default will automatically set default values for existing records
     # binary_data remains NOT NULL
