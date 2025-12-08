@@ -23,4 +23,6 @@ export { WikiSidebarList } from './WikiSidebarList';
 export { SearchBox } from './SearchBox';
 export { useMermaidInit } from './useMermaidInit';
 export { DiagramModal } from './DiagramModal';
+export { KnowledgeModuleNav } from './KnowledgeModuleNav';
+export type { KnowledgeModule } from './KnowledgeModuleNav';
 export type { ContentWriteSummary, ContentWrite } from './wikiUtils';

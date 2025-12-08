@@ -6,6 +6,19 @@ import { WikiProjectsResponse, WikiGenerationsResponse, WikiGenerationDetail } f
 import { apiClient } from './client';
 
 /**
+ * Wiki config response type
+ */
+export interface WikiConfigResponse {
+  default_team_name: string;
+  default_team: {
+    id: number;
+    name: string;
+    agent_type: string;
+  } | null;
+  enabled: boolean;
+}
+
+/**
  * Get all Wiki projects
  * @param page Page number, defaults to 1
  * @param limit Items per page, defaults to 100
@@ -151,6 +164,19 @@ export async function cancelWikiGeneration(generationId: number): Promise<unknow
       throw new Error(error.message);
     }
     // Otherwise, throw the error directly
+    throw error;
+  }
+}
+
+/**
+ * Get Wiki configuration including default team info
+ * @returns Wiki configuration
+ */
+export async function fetchWikiConfig(): Promise<WikiConfigResponse> {
+  try {
+    return await apiClient.get('/wiki/config');
+  } catch (error) {
+    console.error('Error fetching wiki config:', error);
     throw error;
   }
 }

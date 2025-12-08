@@ -20,7 +20,7 @@ import {
   useWikiProjects,
   CancelConfirmDialog,
   SearchBox,
-  WikiSidebarList,
+  KnowledgeModuleNav,
 } from '@/features/knowledge';
 
 export default function WikiPage() {
@@ -42,14 +42,22 @@ export default function WikiPage() {
     isSubmitting,
     confirmDialogOpen,
     selectedRepo,
-    selectedBranch,
+    // Team and Model state
+    teams,
+    teamsLoading,
+    selectedTeam,
+    selectedModel,
+    forceOverride,
+    defaultTeamId,
     loadProjects,
     loadMoreProjects,
     handleAddRepo,
     handleCloseModal,
     handleRepoChange,
-    handleBranchChange,
     handleLanguageChange,
+    handleTeamChange,
+    handleModelChange,
+    handleForceOverrideChange,
     handleSubmit,
     handleCancelClick,
     confirmCancelGeneration,
@@ -57,11 +65,14 @@ export default function WikiPage() {
     setPendingCancelProjectId,
   } = useWikiProjects({ accountId: user?.id });
 
-  const [sidebarSearchTerm, setSidebarSearchTerm] = useState('');
   const [mainSearchTerm, setMainSearchTerm] = useState('');
 
   const navigateToWikiDetail = (projectId: number) => {
     router.push(`/knowledge/${projectId}`);
+  };
+
+  const navigateToTask = (taskId: number) => {
+    router.push(`/code?taskId=${taskId}`);
   };
 
   // Filter projects to show only those with user's generations
@@ -77,22 +88,6 @@ export default function WikiPage() {
         project.generations[0].status === 'FAILED' ||
         project.generations[0].status === 'CANCELLED')
     );
-  });
-
-  // Filter sidebar projects
-  const filteredSidebarProjects = userProjects.filter(project => {
-    const matchesSearch = project.project_name
-      .toLowerCase()
-      .includes(sidebarSearchTerm.toLowerCase());
-
-    const hasValidGeneration =
-      project.generations &&
-      project.generations.length > 0 &&
-      (project.generations[0].status === 'RUNNING' ||
-        project.generations[0].status === 'COMPLETED' ||
-        project.generations[0].status === 'PENDING');
-
-    return matchesSearch && hasValidGeneration;
   });
 
   useEffect(() => {
@@ -113,29 +108,8 @@ export default function WikiPage() {
         </TopNavigation>
 
         <div className="flex h-full">
-          {/* Left sidebar */}
-          <div className="w-64 border-r border-border overflow-y-auto">
-            <div className="p-4">
-              <h2 className="text-lg font-medium mb-4">{t('wiki.repositories')}</h2>
-
-              {/* Left search box - using shared component */}
-              <SearchBox
-                value={sidebarSearchTerm}
-                onChange={setSidebarSearchTerm}
-                placeholder={t('wiki.search')}
-                size="sm"
-                className="mb-4"
-              />
-
-              {/* Sidebar project list - using shared component */}
-              <WikiSidebarList
-                projects={filteredSidebarProjects}
-                loading={loading}
-                error={error}
-                onProjectClick={navigateToWikiDetail}
-              />
-            </div>
-          </div>
+          {/* Left module navigation sidebar */}
+          <KnowledgeModuleNav activeModule="code" />
 
           {/* Main content area */}
           <div className="flex-1 overflow-auto p-6">
@@ -156,6 +130,7 @@ export default function WikiPage() {
               error={error}
               onAddRepo={handleAddRepo}
               onProjectClick={navigateToWikiDetail}
+              onTaskClick={navigateToTask}
               onCancelClick={handleCancelClick}
               cancellingIds={cancellingIds}
               searchTerm={mainSearchTerm}
@@ -174,13 +149,20 @@ export default function WikiPage() {
         formErrors={formErrors}
         isSubmitting={isSubmitting}
         onRepoChange={handleRepoChange}
-        onBranchChange={handleBranchChange}
         onLanguageChange={handleLanguageChange}
         onSubmit={handleSubmit}
         selectedRepo={selectedRepo}
-        selectedBranch={selectedBranch}
+        // Team and Model props
+        teams={teams}
+        teamsLoading={teamsLoading}
+        selectedTeam={selectedTeam}
+        onTeamChange={handleTeamChange}
+        selectedModel={selectedModel}
+        onModelChange={handleModelChange}
+        forceOverride={forceOverride}
+        onForceOverrideChange={handleForceOverrideChange}
+        defaultTeamId={defaultTeamId}
       />
-
       {/* Cancel confirm dialog */}
       <CancelConfirmDialog
         isOpen={confirmDialogOpen}

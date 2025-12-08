@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -26,23 +27,56 @@ from app.schemas.wiki import (
 from app.services.user import user_service
 from app.services.wiki_service import wiki_service
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 internal_router = APIRouter()
 
 
-def _verify_internal_token(authorization: str = Header(default="")) -> None:
-    """Simple fixed-token verification for internal content writer."""
+def _verify_internal_token(
+    authorization: str = Header(default=""),
+    db: Session = Depends(get_db),
+) -> None:
+    """
+    Verify authorization token for internal content writer.
+
+    Supports two authentication methods:
+    1. Internal API token (legacy): Fixed token from wiki_settings.INTERNAL_API_TOKEN
+    2. User JWT token (recommended): Standard JWT token from task execution context
+
+    The user JWT token is automatically available in the executor container via
+    TASK_INFO environment variable, making it the preferred method for wiki_submit skill.
+    """
     if not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing or invalid Authorization header",
         )
     token = authorization[7:].strip()
-    if token != wiki_settings.INTERNAL_API_TOKEN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid internal API token",
-        )
+
+    # First, try internal API token (legacy method)
+    if token == wiki_settings.INTERNAL_API_TOKEN:
+        logger.debug("Wiki content write authenticated via internal API token")
+        return
+
+    # Second, try user JWT token (recommended method)
+    try:
+        # Verify JWT token and get user
+        user = security.get_current_user_from_token(token, db)
+        if user and user.is_active:
+            logger.debug(
+                f"Wiki content write authenticated via JWT token for user {user.id}"
+            )
+            return
+    except Exception as e:
+        logger.debug(f"JWT token verification failed: {e}")
+        pass
+
+    # If neither method works, reject the request
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Invalid authorization token. Use either internal API token or valid user JWT token.",
+    )
 
 
 def _resolve_user_id(
@@ -324,4 +358,42 @@ def get_wiki_stats_summary(
         "completed_generations": completed_generations,
         "failed_generations": failed_generations,
         "cancelled_generations": cancelled_generations,
+    }
+
+
+# ========== Config Endpoints ==========
+@router.get("/config")
+def get_wiki_config(
+    current_user: User = Depends(security.get_current_user),
+    main_db: Session = Depends(get_db),
+):
+    """Get wiki configuration including default team info"""
+    from app.services.adapters.team_kinds import team_kinds_service
+
+    default_team_name = wiki_settings.DEFAULT_TEAM_NAME
+    default_team = None
+
+    if default_team_name:
+        # Find team by name and namespace
+        team = team_kinds_service.get_team_by_name_and_namespace(
+            db=main_db,
+            team_name=default_team_name,
+            team_namespace="default",
+            user_id=current_user.id,
+        )
+        if team:
+            # Convert Kind to team dict to get agent_type
+            team_dict = team_kinds_service._convert_to_team_dict(
+                team, main_db, current_user.id
+            )
+            default_team = {
+                "id": team.id,
+                "name": team.name,
+                "agent_type": team_dict.get("agent_type"),
+            }
+
+    return {
+        "default_team_name": default_team_name,
+        "default_team": default_team,
+        "enabled": wiki_settings.ENABLED,
     }

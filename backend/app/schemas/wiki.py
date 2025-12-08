@@ -78,6 +78,7 @@ class WikiGenerationCreate(BaseModel):
     )
     source_snapshot: SourceSnapshot = Field(..., description="Source snapshot")
     team_id: Optional[int] = Field(None, description="Team ID")
+    model_id: Optional[str] = Field(None, description="Model ID for task execution")
     ext: Optional[Dict[str, Any]] = Field(None, description="Extension fields")
 
 
@@ -108,6 +109,7 @@ class WikiContentSection(BaseModel):
     type: str
     title: str
     content: str
+    parent_id: Optional[int] = None
     ext: Optional[Dict[str, Any]] = None
 
 

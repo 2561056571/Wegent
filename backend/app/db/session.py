@@ -28,6 +28,7 @@ Base = declarative_base()
 # Alias for backward compatibility
 WikiBase = Base
 
+
 def get_wiki_db():
     """
     Wiki database session dependency

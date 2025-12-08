@@ -824,7 +824,6 @@ class GitHubProvider(RepositoryProvider):
         except requests.exceptions.RequestException as e:
             raise HTTPException(status_code=502, detail=f"GitHub API error: {str(e)}")
 
-
     def check_user_project_access(
         self,
         token: str,

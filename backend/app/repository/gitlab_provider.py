@@ -859,7 +859,7 @@ class GitLabProvider(RepositoryProvider):
 
         except requests.exceptions.RequestException as e:
             raise HTTPException(status_code=502, detail=f"GitLab API error: {str(e)}")
-   
+
     def check_user_project_access(
         self,
         token: str,
@@ -910,7 +910,9 @@ class GitLabProvider(RepositoryProvider):
             raise HTTPException(status_code=502, detail=f"GitLab API error: {str(e)}")
 
         # Check project member access
-        encoded_project_id = project_id.replace("/", "%2F") if "/" in project_id else project_id
+        encoded_project_id = (
+            project_id.replace("/", "%2F") if "/" in project_id else project_id
+        )
         try:
             # Try to get the project member info for this user
             member_response = self._make_request_with_auth_retry(

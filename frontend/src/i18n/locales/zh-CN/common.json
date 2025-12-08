@@ -563,6 +563,15 @@
     "use_bot_model": "使用 Bot 预设模型",
     "model_required": "请选择模型"
   },
+  "knowledge": {
+    "modules": {
+      "title": "知识空间",
+      "code": "代码知识",
+      "code_desc": "仓库文档",
+      "wiki": "Wiki",
+      "wiki_desc": "团队知识库"
+    }
+  },
   "wiki": {
     "add_repository": "添加仓库",
     "add_repository_desc": "点击添加新仓库",
@@ -570,6 +579,7 @@
     "source": "来源",
     "indexing": "索引中...",
     "cancelling": "取消中...",
+    "cancel": "取消",
     "cancel_title": "点击取消生成",
     "cancel_dialog_title": "取消生成",
     "cancel_dialog_description": "确定要取消知识库生成吗？此操作无法撤销。",
@@ -593,7 +603,10 @@
     "copy_code": "复制代码",
     "copied": "已复制!",
     "access_denied_title": "仓库访问被拒绝",
-    "access_denied_description": "Wiki任务用户没有访问此仓库的权限。请将该用户添加到GitLab项目或配置其他用户。"
+    "access_denied_description": "Wiki任务用户没有访问此仓库的权限。请将该用户添加到GitLab项目或配置其他用户。",
+    "team": "智能体",
+    "model": "模型",
+    "default_team": "默认"
   },
   "shells": {
     "title": "Shell 管理",

@@ -115,7 +115,7 @@ class WikiContent(WikiBase):
     type = Column(String(50), nullable=False, default="chapter", index=True)
     title = Column(String(500), nullable=False)
     content = Column(Text, nullable=False)
-    parent_id = Column(Integer, nullable=True)
+    parent_id = Column(Integer, nullable=False, default=0)
     ext = Column(JSON, comment="Content extension data")
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())

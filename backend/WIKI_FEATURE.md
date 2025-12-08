@@ -49,7 +49,7 @@ WIKI_RESULT_POLL_BATCH_SIZE=20
 # Content settings
 WIKI_MAX_CONTENT_SIZE=10485760   # 10MB max
 WIKI_SUPPORTED_FORMATS=["markdown", "html"]
-WIKI_CONTENT_WRITE_BASE_URL=http://localhost:8000
+WIKI_CONTENT_WRITE_BASE_URL=http://backend:8000
 WIKI_CONTENT_WRITE_ENDPOINT=/api/internal/wiki/generations/contents
 WIKI_DEFAULT_SECTION_TYPES=["overview", "architecture", "module", "api", "guide", "deep"]
 WIKI_INTERNAL_API_TOKEN=weki

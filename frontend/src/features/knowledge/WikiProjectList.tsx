@@ -8,6 +8,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { WikiProject, WikiGeneration } from '@/types/wiki';
 import { getProjectDisplayName } from './wikiUtils';
+import { Card } from '@/components/ui/card';
 
 interface WikiProjectListProps {
   projects: (WikiProject & { generations?: WikiGeneration[] })[];
@@ -16,6 +17,7 @@ interface WikiProjectListProps {
   error: string | null;
   onAddRepo: () => void;
   onProjectClick: (projectId: number) => void;
+  onTaskClick: (taskId: number) => void;
   onCancelClick: (projectId: number, e: React.MouseEvent) => void;
   cancellingIds: Set<number>;
   searchTerm?: string;
@@ -30,6 +32,7 @@ export default function WikiProjectList({
   error,
   onAddRepo,
   onProjectClick,
+  onTaskClick,
   onCancelClick,
   cancellingIds,
   searchTerm = '',
@@ -80,10 +83,9 @@ export default function WikiProjectList({
       project.source_type.toLowerCase().includes(searchTerm.toLowerCase());
 
     const hasValidGeneration =
-    !project.generations ||
-    project.generations.length === 0 ||
-    (project.generations[0].status !== 'FAILED' &&
-      project.generations[0].status !== 'CANCELLED');
+      !project.generations ||
+      project.generations.length === 0 ||
+      (project.generations[0].status !== 'FAILED' && project.generations[0].status !== 'CANCELLED');
 
     return matchesSearch && hasValidGeneration;
   });
@@ -101,120 +103,152 @@ export default function WikiProjectList({
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {/* Add repository card */}
-      <div
-        className="bg-surface border border-border rounded-lg p-6 hover:shadow-lg transition-all duration-200 cursor-pointer flex flex-col items-center justify-center h-[200px]"
-        onClick={onAddRepo}
-      >
-        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-2">
-          <svg
-            className="h-5 w-5 text-primary"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-        </div>
-        <h3 className="font-medium text-lg mb-1">{t('wiki.add_repository')}</h3>
-        <p className="text-sm text-text-secondary text-center">{t('wiki.add_repository_desc')}</p>
-      </div>
-
-      {/* Empty state message - shown when no projects */}
-      {projects.length === 0 && (
-        <div className="col-span-1 md:col-span-1 lg:col-span-2 flex items-center justify-center h-[200px]">
-          <div className="text-center text-text-secondary">
-            <p>{t('wiki.no_projects')}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Project card list */}
-      {filteredProjects.map(project => (
-        <div
-          key={project.id}
-          className="bg-surface border border-border rounded-lg p-6 hover:shadow-lg transition-all duration-200 cursor-pointer transform hover:-translate-y-1 h-[200px] flex flex-col"
-          onClick={() => onProjectClick(project.id)}
+    <div className="max-w-4xl mx-auto">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {/* Add repository card */}
+        <Card
+          padding="sm"
+          className="hover:bg-hover transition-colors cursor-pointer flex flex-col items-center justify-center h-[100px]"
+          onClick={onAddRepo}
         >
-          {/* Project header */}
-          <div className="flex items-start mb-3 flex-shrink-0">
-            <div className="w-6 h-6 mr-3 flex-shrink-0 text-text-secondary mt-0.5">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
+          <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center mb-1.5">
+            <svg
+              className="h-4 w-4 text-primary"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+          </div>
+          <h3 className="font-medium text-sm mb-0.5">{t('wiki.add_repository')}</h3>
+          <p className="text-xs text-text-muted text-center">{t('wiki.add_repository_desc')}</p>
+        </Card>
+
+        {/* Empty state message - shown when no projects */}
+        {projects.length === 0 && (
+          <div className="col-span-1 md:col-span-1 lg:col-span-2 flex items-center justify-center h-[100px]">
+            <div className="text-center text-text-muted">
+              <p className="text-sm">{t('wiki.no_projects')}</p>
             </div>
-            <h3 className="font-semibold text-lg leading-tight line-clamp-2">
-              {(() => {
-                const displayName = getProjectDisplayName(project);
-                if (displayName.hasSlash) {
-                  return (
-                    <span className="flex items-center flex-wrap">
-                      <span className="text-text-muted">{displayName.parts[0]}</span>
-                      <span className="mx-1 text-text-muted font-normal">/</span>
-                      <span>{displayName.parts[1]}</span>
-                    </span>
-                  );
-                }
-                return <span>{displayName.parts[0]}</span>;
-              })()}
-            </h3>
           </div>
+        )}
 
-          {/* Project info - takes remaining space */}
-          <div className="text-sm text-text-secondary flex-1 min-h-0">
-            <p className="flex items-center">
-              <span className="text-text-muted mr-2">{t('wiki.source')}:</span>
-              <span className="capitalize">{project.source_type}</span>
-            </p>
-            {project.description && (
-              <p className="mt-2 line-clamp-2 text-text-muted">{project.description}</p>
-            )}
-          </div>
-
-          {/* Wiki generation status - only show when indexing */}
-          {project.generations &&
+        {/* Project card list */}
+        {filteredProjects.map(project => {
+          // Check if project is currently generating (RUNNING or PENDING)
+          const isGenerating =
+            project.generations &&
             project.generations.length > 0 &&
             (project.generations[0].status === 'RUNNING' ||
-              project.generations[0].status === 'PENDING') && (
-              <div className="mt-auto pt-3 border-t border-border flex-shrink-0">
-                <div className="flex items-center justify-end">
-                  <span
-                    className="px-3 py-1 text-xs rounded-full bg-surface-hover text-text-secondary border border-border cursor-pointer hover:bg-muted transition-colors"
-                    onClick={e => onCancelClick(project.id, e)}
-                    title={t('wiki.cancel_title')}
-                  >
-                    {cancellingIds.has(project.generations[0].id)
-                      ? t('wiki.cancelling')
-                      : t('wiki.indexing')}
-                  </span>
-                </div>
-              </div>
-            )}
-        </div>
-      ))}
-      {/* Load more trigger - invisible element that triggers loading when scrolled into view */}
-      {hasMore && onLoadMore && (
-        <div ref={loadMoreTriggerRef} className="col-span-full h-10" />
-      )}
+              project.generations[0].status === 'PENDING');
+          const taskId = isGenerating ? project.generations![0].task_id : null;
 
-      {/* Loading more indicator */}
-      {loadingMore && (
-        <div className="col-span-full flex justify-center py-4">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-        </div>
-      )}
+          return (
+            <Card
+              key={project.id}
+              padding="sm"
+              className="hover:bg-hover transition-colors cursor-pointer h-[100px] flex flex-col"
+              onClick={() => {
+                if (isGenerating && taskId) {
+                  // Navigate to task page when generating
+                  onTaskClick(taskId);
+                } else {
+                  // Navigate to wiki detail page when completed
+                  onProjectClick(project.id);
+                }
+              }}
+            >
+              {/* Project header */}
+              <div className="flex items-start mb-1.5 flex-shrink-0">
+                <div className="w-4 h-4 mr-1.5 flex-shrink-0 text-text-muted mt-0.5">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.5}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                </div>
+                <h3 className="font-medium text-sm leading-tight line-clamp-1">
+                  {(() => {
+                    const displayName = getProjectDisplayName(project);
+                    if (displayName.hasSlash) {
+                      return (
+                        <span className="flex items-center flex-wrap">
+                          <span className="text-text-muted text-xs">{displayName.parts[0]}</span>
+                          <span className="mx-0.5 text-text-muted font-normal">/</span>
+                          <span>{displayName.parts[1]}</span>
+                        </span>
+                      );
+                    }
+                    return <span>{displayName.parts[0]}</span>;
+                  })()}
+                </h3>
+              </div>
+
+              {/* Project info - takes remaining space */}
+              <div className="text-xs text-text-muted flex-1 min-h-0">
+                <p className="flex items-center">
+                  <span className="mr-1">{t('wiki.source')}:</span>
+                  <span className="capitalize">{project.source_type}</span>
+                </p>
+                {project.description && (
+                  <p className="mt-0.5 line-clamp-1">{project.description}</p>
+                )}
+              </div>
+
+              {/* Wiki generation status - only show when indexing */}
+              {project.generations &&
+                project.generations.length > 0 &&
+                (project.generations[0].status === 'RUNNING' ||
+                  project.generations[0].status === 'PENDING') && (
+                  <div className="mt-auto pt-1.5 border-t border-border flex-shrink-0">
+                    <div className="flex items-center justify-between">
+                      {/* Status indicator */}
+                      <span className="px-1.5 py-0.5 text-xs rounded-full bg-primary/10 text-primary flex items-center gap-1">
+                        <span className="w-1 h-1 rounded-full bg-primary animate-pulse"></span>
+                        {t('wiki.indexing')}
+                      </span>
+                      {/* Cancel button */}
+                      <button
+                        className="px-1.5 py-0.5 text-xs rounded-full text-text-muted border border-border hover:bg-hover hover:text-error transition-colors"
+                        onClick={e => onCancelClick(project.id, e)}
+                        title={t('wiki.cancel_title')}
+                        disabled={cancellingIds.has(project.generations[0].id)}
+                      >
+                        {cancellingIds.has(project.generations[0].id)
+                          ? t('wiki.cancelling')
+                          : t('wiki.cancel')}
+                      </button>
+                    </div>
+                  </div>
+                )}
+            </Card>
+          );
+        })}
+        {/* Load more trigger - invisible element that triggers loading when scrolled into view */}
+        {hasMore && onLoadMore && <div ref={loadMoreTriggerRef} className="col-span-full h-10" />}
+
+        {/* Loading more indicator */}
+        {loadingMore && (
+          <div className="col-span-full flex justify-center py-4">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

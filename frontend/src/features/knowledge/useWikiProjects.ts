@@ -4,15 +4,19 @@
 
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { WikiProject, WikiGeneration } from '@/types/wiki';
-import { GitRepoInfo, GitBranch } from '@/types/api';
+import { GitRepoInfo, GitBranch, Team } from '@/types/api';
 import {
   fetchWikiProjects,
   createWikiGeneration,
   cancelWikiGeneration,
   fetchWikiGenerations,
+  fetchWikiConfig,
 } from '@/apis/wiki';
+import { teamApis } from '@/apis/team';
+import { githubApis } from '@/apis/github';
+import { Model, DEFAULT_MODEL_NAME } from '@/features/tasks/components/ModelSelector';
 
 interface UseWikiProjectsOptions {
   accountId?: number;
@@ -84,6 +88,14 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Team and Model state
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [teamsLoading, setTeamsLoading] = useState(false);
+  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
+  const [selectedModel, setSelectedModel] = useState<Model | null>(null);
+  const [forceOverride, setForceOverride] = useState(false);
+  const [defaultTeamId, setDefaultTeamId] = useState<number | null>(null);
 
   // Confirm dialog state
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
@@ -160,6 +172,39 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
       loadingRef.current = false;
     }
   }, [currentPage, pageSize, hasMore, loadingMore, projects.length, loadProjectsWithGenerations]);
+  // Load wiki config and teams on mount
+  useEffect(() => {
+    const loadTeamsAndConfig = async () => {
+      setTeamsLoading(true);
+      try {
+        // First, fetch wiki config to get default team info
+        const config = await fetchWikiConfig();
+        const defaultTeamIdFromConfig = config.default_team?.id || null;
+        setDefaultTeamId(defaultTeamIdFromConfig);
+
+        // Then, fetch all teams
+        const response = await teamApis.getTeams({ page: 1, limit: 100 });
+        setTeams(response.items);
+
+        // Auto-select default wiki team from config
+        if (defaultTeamIdFromConfig) {
+          const defaultTeam = response.items.find(t => t.id === defaultTeamIdFromConfig);
+          if (defaultTeam) {
+            setSelectedTeam(defaultTeam);
+          } else if (response.items.length > 0) {
+            setSelectedTeam(response.items[0]);
+          }
+        } else if (response.items.length > 0) {
+          setSelectedTeam(response.items[0]);
+        }
+      } catch (err) {
+        console.error('Failed to load teams or wiki config:', err);
+      } finally {
+        setTeamsLoading(false);
+      }
+    };
+    loadTeamsAndConfig();
+  }, []);
 
   // Open add repo modal
   const handleAddRepo = useCallback(() => {
@@ -172,6 +217,9 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
       language: 'en',
     });
     setFormErrors({});
+    // Reset model selection but keep team selection
+    setSelectedModel(null);
+    setForceOverride(false);
   }, []);
 
   // Close modal
@@ -179,12 +227,32 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
     setIsModalOpen(false);
     setSelectedRepo(null);
     setSelectedBranch(null);
+    // Reset model selection but keep team selection
+    setSelectedModel(null);
+    setForceOverride(false);
   }, []);
 
-  // Handle repo change from selector
-  const handleRepoChange = useCallback((repo: GitRepoInfo | null) => {
+  // Handle team change
+  const handleTeamChange = useCallback((team: Team | null) => {
+    setSelectedTeam(team);
+    // Reset model selection when team changes
+    setSelectedModel(null);
+    setForceOverride(false);
+  }, []);
+
+  // Handle model change
+  const handleModelChange = useCallback((model: Model | null) => {
+    setSelectedModel(model);
+  }, []);
+
+  // Handle force override change
+  const handleForceOverrideChange = useCallback((force: boolean) => {
+    setForceOverride(force);
+  }, []);
+
+  // Handle repo change from selector - automatically fetch and use default branch
+  const handleRepoChange = useCallback(async (repo: GitRepoInfo | null) => {
     setSelectedRepo(repo);
-    setSelectedBranch(null);
     if (repo) {
       setFormData(prev => ({
         ...prev,
@@ -196,10 +264,53 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
         delete newErrors.source_url;
         return newErrors;
       });
+
+      // Fetch branches and auto-select default branch
+      try {
+        const branches = await githubApis.getBranches(repo);
+        const defaultBranch = branches.find(b => b.default);
+        if (defaultBranch) {
+          setSelectedBranch(defaultBranch);
+          setFormData(prev => ({
+            ...prev,
+            branch_name: defaultBranch.name,
+          }));
+          // Clear branch_name error
+          setFormErrors(prev => {
+            const newErrors = { ...prev };
+            delete newErrors.branch_name;
+            return newErrors;
+          });
+        } else if (branches.length > 0) {
+          // Fallback to first branch if no default found
+          setSelectedBranch(branches[0]);
+          setFormData(prev => ({
+            ...prev,
+            branch_name: branches[0].name,
+          }));
+        } else {
+          // No branches available, use 'main' as fallback
+          setSelectedBranch({ name: 'main', protected: false, default: true });
+          setFormData(prev => ({
+            ...prev,
+            branch_name: 'main',
+          }));
+        }
+      } catch (error) {
+        console.error('Failed to fetch branches:', error);
+        // Fallback to 'main' on error
+        setSelectedBranch({ name: 'main', protected: false, default: true });
+        setFormData(prev => ({
+          ...prev,
+          branch_name: 'main',
+        }));
+      }
+    } else {
+      setSelectedBranch(null);
     }
   }, []);
 
-  // Handle branch change from selector
+  // Handle branch change from selector (kept for backward compatibility)
   const handleBranchChange = useCallback((branch: GitBranch | null) => {
     setSelectedBranch(branch);
     if (branch) {
@@ -249,13 +360,10 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
     async (e: React.FormEvent) => {
       e.preventDefault();
 
-      // Validate using selected repo and branch
+      // Validate using selected repo (branch is auto-selected from default)
       const errors: Record<string, string> = {};
       if (!selectedRepo) {
         errors.source_url = 'Please select a repository';
-      }
-      if (!selectedBranch) {
-        errors.branch_name = 'Please select a branch';
       }
 
       if (Object.keys(errors).length > 0) {
@@ -263,12 +371,20 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
         return;
       }
 
+      // Use selected branch name (already auto-selected from default branch)
+      const branchName = selectedBranch?.name || 'main';
+
       setIsSubmitting(true);
 
       try {
         const sourceUrl = selectedRepo!.git_url;
         const sourceType = parseSourceType(sourceUrl);
         const sourceDomain = extractDomain(sourceUrl);
+
+        // Determine model_id to send
+        // When default model is selected, don't pass model_id (use bot's predefined model)
+        const modelId =
+          selectedModel?.name === DEFAULT_MODEL_NAME ? undefined : selectedModel?.name;
 
         const requestData = {
           project_name: selectedRepo!.git_repo,
@@ -281,7 +397,7 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
           language: formData.language,
           source_snapshot: {
             type: 'git',
-            branch_name: selectedBranch!.name,
+            branch_name: branchName,
             commit_id: '',
             commit_message: '',
             commit_time: new Date().toISOString(),
@@ -292,7 +408,8 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
             snapshot_time: new Date().toISOString(),
             file_count: 0,
           },
-          team_id: 0,
+          team_id: selectedTeam?.id || 0,
+          model_id: modelId,
           ext: {},
         };
 
@@ -311,7 +428,15 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
         setIsSubmitting(false);
       }
     },
-    [selectedRepo, selectedBranch, formData.language, handleCloseModal, loadProjects]
+    [
+      selectedRepo,
+      selectedBranch,
+      formData.language,
+      selectedTeam,
+      selectedModel,
+      handleCloseModal,
+      loadProjects,
+    ]
   );
 
   // Open cancel confirmation dialog
@@ -385,6 +510,13 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
     isSubmitting,
     selectedRepo,
     selectedBranch,
+    // Team and Model state
+    teams,
+    teamsLoading,
+    selectedTeam,
+    selectedModel,
+    forceOverride,
+    defaultTeamId,
     // Confirm dialog state
     confirmDialogOpen,
     pendingCancelProjectId,
@@ -397,6 +529,9 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
     handleRepoChange,
     handleBranchChange,
     handleLanguageChange,
+    handleTeamChange,
+    handleModelChange,
+    handleForceOverrideChange,
     handleSubmit,
     handleCancelClick,
     confirmCancelGeneration,

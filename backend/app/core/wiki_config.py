@@ -8,15 +8,16 @@ from pydantic_settings import BaseSettings
 class WikiSettings(BaseSettings):
     """Wiki feature independent configuration"""
 
-
     # Wiki tables now use main database (task_manager)
     # DATABASE_URL configuration removed - wiki tables share the main database
 
     # Wiki feature toggle (env var: WIKI_ENABLED)
     ENABLED: bool = True
 
-    # Wiki task configuration (env vars: WIKI_DEFAULT_TEAM_ID, WIKI_DEFAULT_AGENT_TYPE, WIKI_DEFAULT_USER_ID)
-    DEFAULT_TEAM_ID: int = 0  # Default execution team ID
+    # Wiki task configuration (env vars: WIKI_DEFAULT_TEAM_NAME, WIKI_DEFAULT_AGENT_TYPE, WIKI_DEFAULT_USER_ID)
+    DEFAULT_TEAM_NAME: str = (
+        "wiki-team"  # Default execution team name (matches init_data/01-default-resources.yaml)
+    )
     DEFAULT_AGENT_TYPE: str = "ClaudeCode"  # Default agent type
     DEFAULT_USER_ID: int = 0  # Default user ID for task creation (0 = use current user)
 
