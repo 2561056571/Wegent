@@ -51,20 +51,35 @@ function getAuthToken(argValue) {
 }
 
 /**
- * Get value from argument or environment variable.
+ * Build wiki endpoint URL from TASK_API_DOMAIN or use provided value.
+ * Priority: argument > WIKI_ENDPOINT env var > TASK_API_DOMAIN + default path
  * @param {string|undefined} argValue - Value from command line argument
- * @param {string} envName - Environment variable name
- * @param {boolean} required - Whether the value is required
- * @returns {string|undefined}
+ * @returns {string}
  */
-function getEnvOrArg(argValue, envName, required = true) {
-  const value = argValue || process.env[envName]
-  if (required && !value) {
-    console.error(`Error: ${envName} is required. Provide via argument or environment variable.`)
-    process.exit(1)
+function getWikiEndpoint(argValue) {
+  // Priority 1: Use argument value if provided
+  if (argValue) {
+    return argValue
   }
-  return value
+  
+  // Priority 2: Use WIKI_ENDPOINT environment variable
+  if (process.env.WIKI_ENDPOINT) {
+    return process.env.WIKI_ENDPOINT
+  }
+  
+  // Priority 3: Build from TASK_API_DOMAIN
+  const taskApiDomain = process.env.TASK_API_DOMAIN
+  if (taskApiDomain) {
+    const baseUrl = taskApiDomain.replace(/\/+$/, '') // Remove trailing slashes
+    const endpoint = `${baseUrl}/api/internal/wiki/generations/contents`
+    console.log(`Built wiki endpoint from TASK_API_DOMAIN: ${endpoint}`)
+    return endpoint
+  }
+  
+  console.error('Error: Wiki endpoint is required. Provide via --endpoint argument, WIKI_ENDPOINT env var, or TASK_API_DOMAIN env var.')
+  process.exit(1)
 }
+
 
 /**
  * Make HTTP request.
@@ -166,13 +181,17 @@ async function submitSections(endpoint, token, generationId, sections, summary =
  * @returns {Promise<number>}
  */
 async function cmdSubmit(args) {
-  const endpoint = getEnvOrArg(args.endpoint, 'WIKI_ENDPOINT')
+  const endpoint = getWikiEndpoint(args.endpoint)
   const token = getAuthToken(args.token)
   if (!token) {
     console.error('Error: Authorization token is required. It can be obtained from TASK_INFO, WIKI_TOKEN env var, or --token argument.')
     process.exit(1)
   }
-  const generationId = parseInt(getEnvOrArg(args.generationId, 'WIKI_GENERATION_ID'), 10)
+  if (!args.generationId) {
+    console.error('Error: --generation-id is required.')
+    process.exit(1)
+  }
+  const generationId = parseInt(args.generationId, 10)
 
   // Get content from file or argument
   let content
@@ -222,13 +241,17 @@ async function cmdSubmit(args) {
  * @returns {Promise<number>}
  */
 async function cmdComplete(args) {
-  const endpoint = getEnvOrArg(args.endpoint, 'WIKI_ENDPOINT')
+  const endpoint = getWikiEndpoint(args.endpoint)
   const token = getAuthToken(args.token)
   if (!token) {
     console.error('Error: Authorization token is required. It can be obtained from TASK_INFO, WIKI_TOKEN env var, or --token argument.')
     process.exit(1)
   }
-  const generationId = parseInt(getEnvOrArg(args.generationId, 'WIKI_GENERATION_ID'), 10)
+  if (!args.generationId) {
+    console.error('Error: --generation-id is required.')
+    process.exit(1)
+  }
+  const generationId = parseInt(args.generationId, 10)
 
   const summary = {
     status: 'COMPLETED',
@@ -259,13 +282,17 @@ async function cmdComplete(args) {
  * @returns {Promise<number>}
  */
 async function cmdFail(args) {
-  const endpoint = getEnvOrArg(args.endpoint, 'WIKI_ENDPOINT')
+  const endpoint = getWikiEndpoint(args.endpoint)
   const token = getAuthToken(args.token)
   if (!token) {
     console.error('Error: Authorization token is required. It can be obtained from TASK_INFO, WIKI_TOKEN env var, or --token argument.')
     process.exit(1)
   }
-  const generationId = parseInt(getEnvOrArg(args.generationId, 'WIKI_GENERATION_ID'), 10)
+  if (!args.generationId) {
+    console.error('Error: --generation-id is required.')
+    process.exit(1)
+  }
+  const generationId = parseInt(args.generationId, 10)
 
   const summary = {
     status: 'FAILED',
@@ -394,7 +421,7 @@ Common Options:
   --endpoint, -e       API endpoint URL (or set WIKI_ENDPOINT env var)
   --token, -t          Authorization token (auto-detected from TASK_INFO.auth_token,
                        or set WIKI_TOKEN env var)
-  --generation-id, -g  Wiki generation ID (or set WIKI_GENERATION_ID env var)
+  --generation-id, -g  Wiki generation ID (required)
 
 Note: The authorization token is automatically obtained from the TASK_INFO
 environment variable when running inside an executor container. You don't need
@@ -416,9 +443,9 @@ Fail Options:
   --error-message, -m  Error message describing the failure
 
 Examples:
-  node wiki_submit.js submit --type overview --title "Project Overview" --file ./overview.md
-  node wiki_submit.js complete --structure-order "overview: Project Overview" "architecture: System Architecture"
-  node wiki_submit.js fail --error-message "Failed to analyze repository"
+  node wiki_submit.js submit --generation-id 123 --type overview --title "Project Overview" --file ./overview.md
+  node wiki_submit.js complete --generation-id 123 --structure-order "overview: Project Overview" "architecture: System Architecture"
+  node wiki_submit.js fail --generation-id 123 --error-message "Failed to analyze repository"
 `)
 }
 

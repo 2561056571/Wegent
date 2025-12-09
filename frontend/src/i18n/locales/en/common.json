@@ -580,6 +580,7 @@
     "cancelling": "Cancelling...",
     "cancel": "Cancel",
     "cancel_title": "Click to cancel generation",
+    "view_task": "Click to view task progress",
     "cancel_dialog_title": "Cancel Generation",
     "cancel_dialog_description": "Are you sure you want to cancel the wiki generation? This action cannot be undone.",
     "repository": "Repository",

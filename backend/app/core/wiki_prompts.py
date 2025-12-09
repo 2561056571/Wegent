@@ -24,46 +24,9 @@ WIKI_TASK_PROMPT_TEMPLATE = Template(
 
 ## Task Configuration
 
-The following environment variables are pre-configured for wiki submission:
-- `WIKI_ENDPOINT`: ${content_endpoint}
 - `WIKI_GENERATION_ID`: ${generation_id}
-
-**Note**: Authorization is handled automatically by the wiki_submit skill.
-
-**Target Language**: ${language}
-**Available Section Types**: ${section_types}
-
-## Documentation Requirements
-
-### Required Sections
-1. **Overview** (`type: overview`): Project objectives, core capabilities, tech stack
-2. **Architecture** (`type: architecture`): System design with Mermaid diagrams, module responsibilities, data flows
-
-### Additional Sections (based on project analysis)
-- `module`: Key modules with responsibilities, classes/functions, dependencies
-- `api`: API endpoints, authentication, request/response schemas
-- `guide`: Setup guides, configuration, troubleshooting
-- `deep`: In-depth analysis of complex topics
-
-## Workflow
-
-1. **Analyze** the repository structure, README, and key source files
-2. **Write** each section as a markdown file (e.g., `/tmp/overview.md`)
-3. **Submit** each section using the wiki_submit skill:
-   ```bash
-   node wiki_submit.js submit --type overview --title "Project Overview" --file /tmp/overview.md
-   ```
-4. **Complete** the generation after all sections are submitted:
-   ```bash
-   node wiki_submit.js complete --structure-order "overview: Project Overview" "architecture: System Architecture"
-   ```
-
-If you encounter errors, mark the generation as failed:
-```bash
-node wiki_submit.js fail --error-message "Description of the error"
-```
-
----
+- **Target Language**: ${language}
+- **Section Types**: ${section_types}
 
 Begin by analyzing the repository structure and generating documentation."""
 )
@@ -81,7 +44,6 @@ def get_wiki_task_prompt(
     project_name: str,
     generation_type: str = "full",
     generation_id: Optional[int] = None,
-    content_endpoint: Optional[str] = None,
     section_types: Optional[List[str]] = None,
     language: Optional[str] = None,
 ) -> str:
@@ -92,7 +54,6 @@ def get_wiki_task_prompt(
         project_name: Project name
         generation_type: Generation type (full/incremental/custom)
         generation_id: Wiki generation identifier for the current run
-        content_endpoint: Endpoint the agent must call to submit results
         section_types: Section types to cover in documentation
         language: Target language for documentation generation
 
@@ -104,7 +65,6 @@ def get_wiki_task_prompt(
         "generation_id": (
             generation_id if generation_id is not None else "UNKNOWN_GENERATION_ID"
         ),
-        "content_endpoint": content_endpoint or "/internal/wiki/generations/contents",
         "section_types": ", ".join(
             section_types
             or ["overview", "architecture", "module", "api", "guide", "deep"]

@@ -235,7 +235,6 @@ class WikiService:
                 project_name=obj_in.project_name,
                 generation_type=obj_in.generation_type,
                 generation_id=generation.id,
-                content_endpoint_url=content_meta.get("content_endpoint_url"),
                 section_types=content_meta.get("default_section_types"),
                 language=obj_in.language,
             )
@@ -473,31 +472,14 @@ class WikiService:
         project_name: str,
         generation_type: str,
         generation_id: Optional[int] = None,
-        content_endpoint_url: Optional[str] = None,
-        content_server: Optional[str] = None,
         section_types: Optional[List[str]] = None,
         language: Optional[str] = None,
     ) -> str:
         """Generate wiki document preset prompt (using centralized config)"""
-        endpoint = (content_endpoint_url or "").strip()
-        if not endpoint:
-            server = (content_server or "").rstrip("/")
-            if not server:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Wiki content writer server address is not configured",
-                )
-            endpoint_path = (
-                wiki_settings.CONTENT_WRITE_ENDPOINT
-                or "/internal/wiki/generations/contents"
-            )
-            endpoint = f"{server}{endpoint_path}"
-
         return get_wiki_task_prompt(
             project_name=project_name,
             generation_type=generation_type,
             generation_id=generation_id,
-            content_endpoint=endpoint,
             section_types=section_types or wiki_settings.DEFAULT_SECTION_TYPES,
             language=language or "en",
         )

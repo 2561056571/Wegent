@@ -581,6 +581,7 @@
     "cancelling": "取消中...",
     "cancel": "取消",
     "cancel_title": "点击取消生成",
+    "view_task": "点击查看任务进度",
     "cancel_dialog_title": "取消生成",
     "cancel_dialog_description": "确定要取消知识库生成吗？此操作无法撤销。",
     "repository": "仓库",

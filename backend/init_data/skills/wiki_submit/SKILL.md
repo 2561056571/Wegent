@@ -1,6 +1,6 @@
 ---
 description: "Submit wiki documentation sections to Wegent backend API. Simplifies the HTTP POST process for wiki content submission."
-version: "1.0.0"
+version: "1.1.0"
 author: "Wegent Team"
 tags: ["wiki", "documentation", "api", "submission"]
 ---
@@ -11,11 +11,11 @@ This skill provides a simple command-line tool to submit wiki documentation sect
 
 ## Usage
 
+
 ### Submit a single section from a markdown file
 
 ```bash
 node wiki_submit.js submit \
-  --endpoint "http://localhost:8000/api/internal/wiki/generations/contents" \
   --generation-id 123 \
   --type overview \
   --title "Project Overview" \
@@ -26,7 +26,6 @@ node wiki_submit.js submit \
 
 ```bash
 node wiki_submit.js submit \
-  --endpoint "http://localhost:8000/api/internal/wiki/generations/contents" \
   --generation-id 123 \
   --type architecture \
   --title "System Architecture" \
@@ -37,7 +36,6 @@ node wiki_submit.js submit \
 
 ```bash
 node wiki_submit.js complete \
-  --endpoint "http://localhost:8000/api/internal/wiki/generations/contents" \
   --generation-id 123 \
   --structure-order "overview: Project Overview" "architecture: System Architecture" "module: Core Modules"
 ```
@@ -46,7 +44,6 @@ node wiki_submit.js complete \
 
 ```bash
 node wiki_submit.js fail \
-  --endpoint "http://localhost:8000/api/internal/wiki/generations/contents" \
   --generation-id 123 \
   --error-message "Failed to analyze repository structure"
 ```
@@ -66,7 +63,10 @@ The authorization token is **automatically obtained** from the `TASK_INFO.auth_t
 
 ## Environment Variables
 
-You can set these environment variables instead of passing arguments:
+The following environment variables are automatically available in executor containers:
 
-- `WIKI_ENDPOINT`: API endpoint URL
-- `WIKI_GENERATION_ID`: Generation ID
+- `TASK_API_DOMAIN`: Backend API domain (e.g., `http://wegent-backend:8000`). The endpoint is automatically built as `{TASK_API_DOMAIN}/api/internal/wiki/generations/contents`
+- `TASK_INFO`: Contains `auth_token` for API authentication
+
+Optional override:
+- `WIKI_ENDPOINT`: Full API endpoint URL (overrides auto-built endpoint from TASK_API_DOMAIN)

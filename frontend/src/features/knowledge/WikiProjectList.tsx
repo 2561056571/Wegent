@@ -19,7 +19,11 @@ interface WikiProjectListProps {
   onProjectClick: (projectId: number) => void;
   onTaskClick: (taskId: number) => void;
   onCancelClick: (projectId: number, e: React.MouseEvent) => void;
+  onDeleteClick?: (projectId: number, e: React.MouseEvent) => void;
+  onRegenerateClick?: (projectId: number, e: React.MouseEvent) => void;
   cancellingIds: Set<number>;
+  deletingIds?: Set<number>;
+  regeneratingIds?: Set<number>;
   searchTerm?: string;
   hasMore?: boolean;
   onLoadMore?: () => void;
@@ -34,7 +38,11 @@ export default function WikiProjectList({
   onProjectClick,
   onTaskClick,
   onCancelClick,
+  onDeleteClick,
+  onRegenerateClick,
   cancellingIds,
+  deletingIds = new Set(),
+  regeneratingIds = new Set(),
   searchTerm = '',
   hasMore = false,
   onLoadMore,
@@ -108,12 +116,12 @@ export default function WikiProjectList({
         {/* Add repository card */}
         <Card
           padding="sm"
-          className="hover:bg-hover transition-colors cursor-pointer flex flex-col items-center justify-center h-[100px]"
+          className="hover:bg-hover transition-colors cursor-pointer flex flex-col items-center justify-center h-[140px]"
           onClick={onAddRepo}
         >
-          <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center mb-1.5">
+          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-3">
             <svg
-              className="h-4 w-4 text-primary"
+              className="h-6 w-6 text-primary"
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
@@ -127,8 +135,7 @@ export default function WikiProjectList({
               />
             </svg>
           </div>
-          <h3 className="font-medium text-sm mb-0.5">{t('wiki.add_repository')}</h3>
-          <p className="text-xs text-text-muted text-center">{t('wiki.add_repository_desc')}</p>
+          <h3 className="font-medium text-sm">{t('wiki.add_repository')}</h3>
         </Card>
 
         {/* Empty state message - shown when no projects */}
@@ -154,77 +161,156 @@ export default function WikiProjectList({
             <Card
               key={project.id}
               padding="sm"
-              className="hover:bg-hover transition-colors cursor-pointer h-[100px] flex flex-col"
+              className="hover:bg-hover transition-colors cursor-pointer h-[140px] flex flex-col group"
               onClick={() => {
-                if (isGenerating && taskId) {
-                  // Navigate to task page when generating
-                  onTaskClick(taskId);
-                } else {
-                  // Navigate to wiki detail page when completed
-                  onProjectClick(project.id);
-                }
+                // Always navigate to wiki detail page when clicking the card
+                onProjectClick(project.id);
               }}
             >
-              {/* Project header */}
-              <div className="flex items-start mb-1.5 flex-shrink-0">
-                <div className="w-4 h-4 mr-1.5 flex-shrink-0 text-text-muted mt-0.5">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                    />
-                  </svg>
-                </div>
-                <h3 className="font-medium text-sm leading-tight line-clamp-1">
+              {/* Project header - with top padding */}
+              <div className="flex items-start pt-1 mb-2 flex-shrink-0">
+                <h3 className="font-medium text-sm leading-relaxed line-clamp-2 flex-1">
                   {(() => {
                     const displayName = getProjectDisplayName(project);
                     if (displayName.hasSlash) {
                       return (
                         <span className="flex items-center flex-wrap">
-                          <span className="text-text-muted text-xs">{displayName.parts[0]}</span>
-                          <span className="mx-0.5 text-text-muted font-normal">/</span>
-                          <span>{displayName.parts[1]}</span>
+                          <span className="text-text-muted">{displayName.parts[0]}</span>
+                          <span className="mx-1 text-text-muted font-normal">/</span>
+                          <span className="font-semibold">{displayName.parts[1]}</span>
                         </span>
                       );
                     }
-                    return <span>{displayName.parts[0]}</span>;
+                    return <span className="font-semibold">{displayName.parts[0]}</span>;
                   })()}
                 </h3>
               </div>
 
-              {/* Project info - takes remaining space */}
+              {/* Project description - takes remaining space */}
               <div className="text-xs text-text-muted flex-1 min-h-0">
-                <p className="flex items-center">
-                  <span className="mr-1">{t('wiki.source')}:</span>
-                  <span className="capitalize">{project.source_type}</span>
-                </p>
-                {project.description && (
-                  <p className="mt-0.5 line-clamp-1">{project.description}</p>
-                )}
+                {project.description && <p className="line-clamp-2">{project.description}</p>}
               </div>
+
+              {/* Bottom section - source on left, actions on right */}
+              {!(
+                project.generations &&
+                project.generations.length > 0 &&
+                (project.generations[0].status === 'RUNNING' ||
+                  project.generations[0].status === 'PENDING')
+              ) && (
+                <div className="flex items-center justify-between mt-auto pt-2 flex-shrink-0">
+                  {/* Source info - bottom left */}
+                  <span className="text-xs text-text-muted capitalize">{project.source_type}</span>
+                  {/* Action icons - bottom right */}
+                  <div className="flex items-center gap-1">
+                    {/* Regenerate button */}
+                    {onRegenerateClick && (
+                      <button
+                        className="p-1.5 rounded-md text-text-muted hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
+                        onClick={e => onRegenerateClick(project.id, e)}
+                        title={t('wiki.regenerate')}
+                        disabled={regeneratingIds.has(project.id)}
+                      >
+                        {regeneratingIds.has(project.id) ? (
+                          <div className="w-4 h-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+                        ) : (
+                          <svg
+                            className="w-4 h-4"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={1.5}
+                              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                            />
+                          </svg>
+                        )}
+                      </button>
+                    )}
+                    {/* Delete button */}
+                    {onDeleteClick && (
+                      <button
+                        className="p-1.5 rounded-md text-text-muted hover:text-error hover:bg-error/10 transition-colors opacity-0 group-hover:opacity-100"
+                        onClick={e => onDeleteClick(project.id, e)}
+                        title={t('common.delete')}
+                        disabled={deletingIds.has(project.id)}
+                      >
+                        {deletingIds.has(project.id) ? (
+                          <div className="w-4 h-4 animate-spin rounded-full border-2 border-error border-t-transparent"></div>
+                        ) : (
+                          <svg
+                            className="w-4 h-4"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={1.5}
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            />
+                          </svg>
+                        )}
+                      </button>
+                    )}
+                    {/* Enter arrow */}
+                    <button
+                      className="p-1.5 rounded-md text-text-muted hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
+                      onClick={e => {
+                        e.stopPropagation();
+                        onProjectClick(project.id);
+                      }}
+                      title={t('wiki.view_detail')}
+                    >
+                      <svg
+                        className="w-4 h-4"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={1.5}
+                          d="M17 8l4 4m0 0l-4 4m4-4H3"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Wiki generation status - only show when indexing */}
               {project.generations &&
                 project.generations.length > 0 &&
                 (project.generations[0].status === 'RUNNING' ||
                   project.generations[0].status === 'PENDING') && (
-                  <div className="mt-auto pt-1.5 border-t border-border flex-shrink-0">
+                  <div className="mt-auto pt-2 flex-shrink-0">
                     <div className="flex items-center justify-between">
-                      {/* Status indicator */}
-                      <span className="px-1.5 py-0.5 text-xs rounded-full bg-primary/10 text-primary flex items-center gap-1">
-                        <span className="w-1 h-1 rounded-full bg-primary animate-pulse"></span>
+                      {/* Indexing status button - click to navigate to task */}
+                      <button
+                        className="px-2 py-1 text-xs rounded-full bg-primary/10 text-primary flex items-center gap-1 hover:bg-primary/20 transition-colors"
+                        onClick={e => {
+                          e.stopPropagation();
+                          if (taskId) {
+                            onTaskClick(taskId);
+                          }
+                        }}
+                        title={t('wiki.view_task')}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
                         {t('wiki.indexing')}
-                      </span>
+                      </button>
                       {/* Cancel button */}
                       <button
-                        className="px-1.5 py-0.5 text-xs rounded-full text-text-muted border border-border hover:bg-hover hover:text-error transition-colors"
+                        className="px-2 py-1 text-xs rounded-full text-text-muted border border-border hover:bg-hover hover:text-error transition-colors"
                         onClick={e => onCancelClick(project.id, e)}
                         title={t('wiki.cancel_title')}
                         disabled={cancellingIds.has(project.generations[0].id)}
