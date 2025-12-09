@@ -37,33 +37,23 @@ export default function WikiPage() {
     cancellingIds,
     hasMore,
     isModalOpen,
-    formData,
     formErrors,
     isSubmitting,
     confirmDialogOpen,
     selectedRepo,
-    // Team and Model state
-    teams,
-    teamsLoading,
-    selectedTeam,
-    selectedModel,
-    forceOverride,
-    defaultTeamId,
+    // Wiki config state (system-level configuration)
+    wikiConfig,
     loadProjects,
     loadMoreProjects,
     handleAddRepo,
     handleCloseModal,
     handleRepoChange,
-    handleLanguageChange,
-    handleTeamChange,
-    handleModelChange,
-    handleForceOverrideChange,
     handleSubmit,
     handleCancelClick,
     confirmCancelGeneration,
     setConfirmDialogOpen,
     setPendingCancelProjectId,
-  } = useWikiProjects({ accountId: user?.id });
+  } = useWikiProjects();
 
   const [mainSearchTerm, setMainSearchTerm] = useState('');
 
@@ -121,7 +111,6 @@ export default function WikiPage() {
               size="md"
               className="mb-6 max-w-2xl mx-auto"
             />
-
             {/* Project list */}
             <WikiProjectList
               projects={userProjects}
@@ -136,6 +125,7 @@ export default function WikiPage() {
               searchTerm={mainSearchTerm}
               hasMore={hasMore}
               onLoadMore={loadMoreProjects}
+              currentUserId={user?.id}
             />
           </div>
         </div>
@@ -145,23 +135,12 @@ export default function WikiPage() {
       <AddRepoModal
         isOpen={isModalOpen}
         onClose={handleCloseModal}
-        formData={formData}
         formErrors={formErrors}
         isSubmitting={isSubmitting}
         onRepoChange={handleRepoChange}
-        onLanguageChange={handleLanguageChange}
         onSubmit={handleSubmit}
         selectedRepo={selectedRepo}
-        // Team and Model props
-        teams={teams}
-        teamsLoading={teamsLoading}
-        selectedTeam={selectedTeam}
-        onTeamChange={handleTeamChange}
-        selectedModel={selectedModel}
-        onModelChange={handleModelChange}
-        forceOverride={forceOverride}
-        onForceOverrideChange={handleForceOverrideChange}
-        defaultTeamId={defaultTeamId}
+        wikiConfig={wikiConfig}
       />
       {/* Cancel confirm dialog */}
       <CancelConfirmDialog

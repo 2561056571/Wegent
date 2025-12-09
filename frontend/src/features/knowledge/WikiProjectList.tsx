@@ -27,6 +27,7 @@ interface WikiProjectListProps {
   searchTerm?: string;
   hasMore?: boolean;
   onLoadMore?: () => void;
+  currentUserId?: number;
 }
 
 export default function WikiProjectList({
@@ -46,6 +47,7 @@ export default function WikiProjectList({
   searchTerm = '',
   hasMore = false,
   onLoadMore,
+  currentUserId,
 }: WikiProjectListProps) {
   const { t } = useTranslation();
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -138,15 +140,6 @@ export default function WikiProjectList({
           <h3 className="font-medium text-sm">{t('wiki.add_repository')}</h3>
         </Card>
 
-        {/* Empty state message - shown when no projects */}
-        {projects.length === 0 && (
-          <div className="col-span-1 md:col-span-1 lg:col-span-2 flex items-center justify-center h-[100px]">
-            <div className="text-center text-text-muted">
-              <p className="text-sm">{t('wiki.no_projects')}</p>
-            </div>
-          </div>
-        )}
-
         {/* Project card list */}
         {filteredProjects.map(project => {
           // Check if project is currently generating (RUNNING or PENDING)
@@ -156,6 +149,11 @@ export default function WikiProjectList({
             (project.generations[0].status === 'RUNNING' ||
               project.generations[0].status === 'PENDING');
           const taskId = isGenerating ? project.generations![0].task_id : null;
+          // Check if current user is the task executor
+          const isTaskExecutor =
+            isGenerating &&
+            currentUserId !== undefined &&
+            project.generations![0].user_id === currentUserId;
 
           return (
             <Card
@@ -294,31 +292,40 @@ export default function WikiProjectList({
                   project.generations[0].status === 'PENDING') && (
                   <div className="mt-auto pt-2 flex-shrink-0">
                     <div className="flex items-center justify-between">
-                      {/* Indexing status button - click to navigate to task */}
-                      <button
-                        className="px-2 py-1 text-xs rounded-full bg-primary/10 text-primary flex items-center gap-1 hover:bg-primary/20 transition-colors"
-                        onClick={e => {
-                          e.stopPropagation();
-                          if (taskId) {
-                            onTaskClick(taskId);
-                          }
-                        }}
-                        title={t('wiki.view_task')}
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
-                        {t('wiki.indexing')}
-                      </button>
-                      {/* Cancel button */}
-                      <button
-                        className="px-2 py-1 text-xs rounded-full text-text-muted border border-border hover:bg-hover hover:text-error transition-colors"
-                        onClick={e => onCancelClick(project.id, e)}
-                        title={t('wiki.cancel_title')}
-                        disabled={cancellingIds.has(project.generations[0].id)}
-                      >
-                        {cancellingIds.has(project.generations[0].id)
-                          ? t('wiki.cancelling')
-                          : t('wiki.cancel')}
-                      </button>
+                      {/* Indexing status indicator/button - only clickable if current user is task executor */}
+                      {isTaskExecutor ? (
+                        <button
+                          className="px-2 py-1 text-xs rounded-full bg-primary/10 text-primary flex items-center gap-1 hover:bg-primary/20 transition-colors"
+                          onClick={e => {
+                            e.stopPropagation();
+                            if (taskId) {
+                              onTaskClick(taskId);
+                            }
+                          }}
+                          title={t('wiki.view_task')}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+                          {t('wiki.indexing')}
+                        </button>
+                      ) : (
+                        <span className="px-2 py-1 text-xs rounded-full bg-primary/10 text-primary flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+                          {t('wiki.indexing')}
+                        </span>
+                      )}
+                      {/* Cancel button - only show if current user is task executor */}
+                      {isTaskExecutor && (
+                        <button
+                          className="px-2 py-1 text-xs rounded-full text-text-muted border border-border hover:bg-hover hover:text-error transition-colors"
+                          onClick={e => onCancelClick(project.id, e)}
+                          title={t('wiki.cancel_title')}
+                          disabled={cancellingIds.has(project.generations[0].id)}
+                        >
+                          {cancellingIds.has(project.generations[0].id)
+                            ? t('wiki.cancelling')
+                            : t('wiki.cancel')}
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

@@ -10,8 +10,10 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 
+from app.core.cache import cache_manager
 from app.core.wiki_config import wiki_settings
 from app.core.wiki_prompts import get_wiki_task_prompt
+from app.models.user import User
 from app.models.wiki import (
     WikiContent,
     WikiGeneration,
@@ -82,13 +84,20 @@ class WikiService:
         self, wiki_db: Session, obj_in: WikiGenerationCreate, user_id: int
     ) -> WikiGeneration:
         """
-        Create wiki document generation task
+        Create wiki document generation task (system-level)
 
         Process:
         1. Find or create project record
         2. Create generation record
-        3. Create task
+        3. Create task using system-level configuration (team and model from backend config)
         4. Update generation record with task_id
+
+        Note: Wiki generation is system-level, team and model are configured in backend,
+        not selected by frontend users.
+
+        The generation record's user_id is set to the system-bound user (WIKI_DEFAULT_USER_ID)
+        when configured, so that all wiki generations are owned by the system user.
+        This allows centralized management of wiki content.
         """
         # Import here to avoid circular imports
         from app.api.dependencies import get_db
@@ -128,38 +137,38 @@ class WikiService:
                     f"Please wait for it to complete or cancel it (generation ID: {existing_active_generation.id}) before creating a new one.",
                 )
 
-            # 3. Determine user ID for task creation
+            # 3. Determine user ID for both generation record and task creation (system-level)
             # Use configured DEFAULT_USER_ID if set (non-zero), otherwise use current user
-            task_user_id = (
+            # This ensures wiki generations are owned by the system-bound user
+            system_user_id = (
                 wiki_settings.DEFAULT_USER_ID
                 if wiki_settings.DEFAULT_USER_ID > 0
                 else user_id
             )
+            task_user_id = system_user_id
 
-            # 4. Determine team to use
-            team_id = obj_in.team_id
-            if not team_id:
-                # Use configured default team name to find team
-                default_team_name = wiki_settings.DEFAULT_TEAM_NAME
-                if not default_team_name:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="No team_id provided and WIKI_DEFAULT_TEAM_NAME is not configured",
-                    )
-
-                # Find team by name and namespace
-                team = team_kinds_service.get_team_by_name_and_namespace(
-                    db=main_db,
-                    team_name=default_team_name,
-                    team_namespace="default",
-                    user_id=task_user_id,
+            # 4. Determine team to use (always from backend configuration, ignore frontend input)
+            # Use configured default team name to find team
+            default_team_name = wiki_settings.DEFAULT_TEAM_NAME
+            if not default_team_name:
+                raise HTTPException(
+                    status_code=400,
+                    detail="WIKI_DEFAULT_TEAM_NAME is not configured. Please set it in your .env file",
                 )
-                if not team:
-                    raise HTTPException(
-                        status_code=404,
-                        detail=f"Default wiki team '{default_team_name}' not found. Please check WIKI_DEFAULT_TEAM_NAME in your .env file",
-                    )
-                team_id = team.id
+
+            # Find team by name and namespace
+            team = team_kinds_service.get_team_by_name_and_namespace(
+                db=main_db,
+                team_name=default_team_name,
+                team_namespace="default",
+                user_id=task_user_id,
+            )
+            if not team:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Default wiki team '{default_team_name}' not found. Please check WIKI_DEFAULT_TEAM_NAME in your .env file",
+                )
+            team_id = team.id
 
             # 4.1 Check if task_user has access to the repository (for GitLab projects)
             if obj_in.source_type in ("gitlab", "github") and task_user_id != user_id:
@@ -200,11 +209,12 @@ class WikiService:
                     )
 
             # 5. Create generation record
+            # Use system_user_id for generation ownership (not current user)
             source_snapshot_dict = obj_in.source_snapshot.model_dump()
 
             generation = WikiGeneration(
                 project_id=project.id,
-                user_id=user_id,
+                user_id=system_user_id,  # Use system-bound user ID for generation ownership
                 team_id=team_id,
                 generation_type=WikiGenerationType(obj_in.generation_type),
                 source_snapshot=source_snapshot_dict,
@@ -246,6 +256,9 @@ class WikiService:
             }
             generation.ext["wiki_env"] = wiki_env
 
+            # Note: model_id is not passed - wiki uses the team's bound model
+            # The team's bot should have a model configured (bind_model or custom config)
+            # When branch_name is empty, git will clone the repository's default branch
             task_create = TaskCreate(
                 title=f"Generate Wiki: {obj_in.project_name}",
                 team_id=team_id,
@@ -257,13 +270,12 @@ class WikiService:
                     else 0
                 ),
                 git_domain=obj_in.source_domain or "",
-                branch_name=obj_in.source_snapshot.branch_name or "main",
+                branch_name=obj_in.source_snapshot.branch_name or "",
                 prompt=wiki_prompt,
                 type="online",
                 task_type="code",
                 auto_delete_executor="false",
                 source="wiki_generator",
-                model_id=obj_in.model_id,
             )
 
             # Get the user for task creation (using task_user_id)
@@ -768,12 +780,26 @@ class WikiService:
     def get_projects(
         self,
         db: Session,
+        user: Optional[User] = None,
         skip: int = 0,
         limit: int = 10,
         project_type: Optional[str] = None,
         source_type: Optional[str] = None,
     ) -> Tuple[List[WikiProject], int]:
-        """Get project list (paginated)"""
+        """
+        Get project list (paginated) with user access filtering.
+
+        Args:
+            db: Database session
+            user: Current user for access filtering. If None, returns all projects (admin mode)
+            skip: Number of records to skip
+            limit: Maximum number of records to return
+            project_type: Optional project type filter
+            source_type: Optional source type filter
+
+        Returns:
+            Tuple of (filtered projects list, total count)
+        """
         query = db.query(WikiProject).filter(WikiProject.is_active == True)
 
         if project_type:
@@ -782,15 +808,252 @@ class WikiService:
         if source_type:
             query = query.filter(WikiProject.source_type == source_type)
 
-        total = query.count()
-        projects = (
-            query.order_by(WikiProject.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-            .all()
-        )
+        # Get all projects first, then filter by user access
+        all_projects = query.order_by(WikiProject.created_at.desc()).all()
 
-        return projects, total
+        # If no user provided (admin mode), return all projects
+        if user is None:
+            total = len(all_projects)
+            paginated_projects = all_projects[skip : skip + limit]
+            return paginated_projects, total
+
+        # Filter projects by user's repository access
+        accessible_projects = self._filter_projects_by_user_access(all_projects, user)
+
+        total = len(accessible_projects)
+        paginated_projects = accessible_projects[skip : skip + limit]
+
+        return paginated_projects, total
+
+    def _filter_projects_by_user_access(
+        self, projects: List[WikiProject], user: User
+    ) -> List[WikiProject]:
+        """
+        Filter projects based on user's repository access permissions.
+
+        Uses cached repository list from Redis for fast batch permission checking.
+        First builds a lookup set from all cached repos, then batch matches all projects.
+        Falls back to API calls only for projects where cache is not available.
+
+        Args:
+            projects: List of WikiProject objects to filter
+            user: User object with git_info containing tokens
+
+        Returns:
+            List of projects the user has read access to
+        """
+        if not user.git_info:
+            # User has no git info configured, return empty list
+            logger.warning(
+                f"User {user.id} has no git_info configured, returning empty project list"
+            )
+            return []
+
+        # Build a map of user's git tokens by source_type and domain
+        user_tokens: Dict[str, Dict[str, str]] = {}
+
+        # Build lookup sets for fast batch matching from cached repos
+        # Key: (source_type, domain) -> set of (repo_id, full_name_lower)
+        cached_repo_ids: Dict[Tuple[str, str], set] = {}
+        cached_repo_names: Dict[Tuple[str, str], set] = {}
+        has_cache_for_domain: Dict[Tuple[str, str], bool] = {}
+
+        for git_info in user.git_info:
+            git_type = git_info.get("type", "")
+            git_domain = git_info.get("git_domain", "")
+            git_token = git_info.get("git_token", "")
+            if git_type and git_token:
+                if git_type not in user_tokens:
+                    user_tokens[git_type] = {}
+                user_tokens[git_type][git_domain] = git_token
+
+                # Try to get cached repositories for this domain
+                cache_key = (git_type, git_domain)
+                cached_repos = cache_manager.get_user_repositories_sync(
+                    user.id, git_domain
+                )
+
+                if cached_repos:
+                    has_cache_for_domain[cache_key] = True
+                    # Build lookup sets for batch matching
+                    repo_ids = set()
+                    repo_names = set()
+                    for repo in cached_repos:
+                        repo_id = str(repo.get("id", ""))
+                        repo_full_name = repo.get("full_name", "").lower()
+                        if repo_id:
+                            repo_ids.add(repo_id)
+                        if repo_full_name:
+                            repo_names.add(repo_full_name)
+
+                    cached_repo_ids[cache_key] = repo_ids
+                    cached_repo_names[cache_key] = repo_names
+
+                    logger.debug(
+                        f"Built lookup sets for user {user.id}, domain {git_domain}: "
+                        f"{len(repo_ids)} repo IDs, {len(repo_names)} repo names"
+                    )
+                else:
+                    has_cache_for_domain[cache_key] = False
+
+        # Batch filter projects using lookup sets
+        accessible_projects = []
+        projects_needing_api_check = []
+
+        for project in projects:
+            source_type = project.source_type
+            source_domain = project.source_domain or ""
+            source_id = project.source_id
+            project_name = project.project_name
+
+            # Check if user has token for this source type
+            if source_type not in user_tokens:
+                logger.debug(
+                    f"User has no token for source_type '{source_type}', skipping project {project.id}"
+                )
+                continue
+
+            # Find the best matching cache key
+            cache_key = (source_type, source_domain)
+
+            # If no exact domain match, try to find any cache for this source type
+            if cache_key not in has_cache_for_domain:
+                # Look for any cached domain for this source type
+                for (
+                    cached_type,
+                    cached_domain,
+                ), has_cache in has_cache_for_domain.items():
+                    if cached_type == source_type and has_cache:
+                        cache_key = (cached_type, cached_domain)
+                        break
+
+            # Check if we have cache for this domain
+            if has_cache_for_domain.get(cache_key, False):
+                # Fast batch lookup using sets
+                repo_ids = cached_repo_ids.get(cache_key, set())
+                repo_names = cached_repo_names.get(cache_key, set())
+
+                # Match by source_id (numeric project ID)
+                if source_id and source_id in repo_ids:
+                    logger.debug(
+                        f"User has access to project {project.id} (matched by source_id from cache)"
+                    )
+                    accessible_projects.append(project)
+                    continue
+
+                # Match by project_name (full path like "namespace/project")
+                if project_name and project_name.lower() in repo_names:
+                    logger.debug(
+                        f"User has access to project {project.id} (matched by project_name from cache)"
+                    )
+                    accessible_projects.append(project)
+                    continue
+
+                # Project not found in cached repos, user doesn't have access
+                logger.debug(
+                    f"Project {project.id} ({project_name}) not found in user's cached repos, denying access"
+                )
+            else:
+                # No cache available for this domain, need API check
+                projects_needing_api_check.append(project)
+
+        # Fallback: Check projects without cache via API (batch if possible)
+        if projects_needing_api_check:
+            logger.info(
+                f"Checking {len(projects_needing_api_check)} projects via API (no cache available)"
+            )
+            for project in projects_needing_api_check:
+                if self._check_user_project_access_via_api(project, user_tokens):
+                    accessible_projects.append(project)
+
+        logger.info(
+            f"User {user.id} has access to {len(accessible_projects)}/{len(projects)} wiki projects"
+        )
+        return accessible_projects
+
+    def _check_user_project_access_via_api(
+        self, project: WikiProject, user_tokens: Dict[str, Dict[str, str]]
+    ) -> bool:
+        """
+        Check if user has access to a specific wiki project's repository via API call.
+
+        This is the fallback method when cached repository list is not available.
+
+        Args:
+            project: WikiProject object
+            user_tokens: Dict mapping source_type -> {domain -> token}
+
+        Returns:
+            True if user has read access, False otherwise
+        """
+        source_type = project.source_type
+        source_domain = project.source_domain or ""
+        source_id = project.source_id
+        project_name = project.project_name
+
+        # Find matching token for the domain
+        domain_tokens = user_tokens.get(source_type, {})
+        git_token = None
+
+        # Try exact domain match first
+        if source_domain and source_domain in domain_tokens:
+            git_token = domain_tokens[source_domain]
+        else:
+            # Fallback to first available token for this source type
+            if domain_tokens:
+                git_token = next(iter(domain_tokens.values()))
+
+        if not git_token:
+            logger.debug(
+                f"No matching token found for project {project.id} (source_type={source_type}, domain={source_domain})"
+            )
+            return False
+
+        try:
+            if source_type == "gitlab":
+                from app.repository.gitlab_provider import GitLabProvider
+
+                provider = GitLabProvider()
+                # Use source_id if available, otherwise use project_name
+                project_identifier = source_id if source_id else project_name
+                result = provider.check_user_project_access(
+                    token=git_token,
+                    git_domain=source_domain,
+                    project_id=project_identifier,
+                )
+            elif source_type == "github":
+                from app.repository.github_provider import GitHubProvider
+
+                provider = GitHubProvider()
+                result = provider.check_user_project_access(
+                    token=git_token,
+                    git_domain=source_domain,
+                    repo_name=project_name,
+                )
+            else:
+                # For unsupported source types, allow access by default
+                logger.debug(
+                    f"Unsupported source_type '{source_type}' for project {project.id}, allowing access"
+                )
+                return True
+
+            has_access = result.get("has_access", False)
+            if has_access:
+                logger.debug(
+                    f"User has {result.get('access_level_name', 'Unknown')} access to project {project.id}"
+                )
+            else:
+                logger.debug(
+                    f"User has no access to project {project.id}: {result.get('error', 'No access')}"
+                )
+            return has_access
+
+        except Exception as e:
+            # On error, deny access for security
+            logger.warning(
+                f"Error checking access for project {project.id}: {str(e)}, denying access"
+            )
+            return False
 
     def get_project_detail(self, db: Session, project_id: int) -> WikiProject:
         """Get project detail"""

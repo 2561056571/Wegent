@@ -64,7 +64,12 @@ class SourceSnapshot(BaseModel):
 
 
 class WikiGenerationCreate(BaseModel):
-    """Create wiki document generation task"""
+    """Create wiki document generation task (system-level)
+
+    Note: Wiki generation uses system-level configuration.
+    Team and model are configured in backend (WIKI_DEFAULT_TEAM_NAME),
+    not selected by frontend users.
+    """
 
     project_name: str = Field(..., description="Project name")
     source_url: str = Field(..., description="Source URL")
@@ -77,8 +82,6 @@ class WikiGenerationCreate(BaseModel):
         default="en", description="Target language for documentation generation"
     )
     source_snapshot: SourceSnapshot = Field(..., description="Source snapshot")
-    team_id: Optional[int] = Field(None, description="Team ID")
-    model_id: Optional[str] = Field(None, description="Model ID for task execution")
     ext: Optional[Dict[str, Any]] = Field(None, description="Extension fields")
 
 

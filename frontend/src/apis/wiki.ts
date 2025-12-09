@@ -6,8 +6,9 @@ import { WikiProjectsResponse, WikiGenerationsResponse, WikiGenerationDetail } f
 import { apiClient } from './client';
 
 /**
- * Wiki config response type
- */
+ /**
+  * Wiki config response type
+  */
 export interface WikiConfigResponse {
   default_team_name: string;
   default_team: {
@@ -15,9 +16,12 @@ export interface WikiConfigResponse {
     name: string;
     agent_type: string;
   } | null;
+  default_user_id: number;
+  has_bound_model: boolean;
+  bound_model_name: string | null;
   enabled: boolean;
+  default_language: string;
 }
-
 /**
  * Get all Wiki projects
  * @param page Page number, defaults to 1
@@ -37,20 +41,20 @@ export async function fetchWikiProjects(page = 1, limit = 100): Promise<WikiProj
     throw error;
   }
 }
-
 /**
  * Get Wiki generation records list
  * @param projectId Project ID
  * @param page Page number, defaults to 1
  * @param limit Items per page, defaults to 10
- * @param accountId Optional account ID, if provided only returns records for that user
  * @returns Wiki generations list response
+ *
+ * Note: The backend uses system-configured WIKI_DEFAULT_USER_ID to filter generations.
+ * This ensures all users see the same wiki content managed by the system user.
  */
 export async function fetchWikiGenerations(
   projectId: number,
   page = 1,
-  limit = 10,
-  accountId?: number
+  limit = 10
 ): Promise<WikiGenerationsResponse> {
   try {
     const queryParams = new URLSearchParams({
@@ -58,11 +62,6 @@ export async function fetchWikiGenerations(
       limit: limit.toString(),
       project_id: projectId.toString(),
     });
-
-    // If accountId is provided, add to query params
-    if (accountId !== undefined) {
-      queryParams.append('account_id', accountId.toString());
-    }
 
     return await apiClient.get(`/wiki/generations?${queryParams.toString()}`);
   } catch (error) {

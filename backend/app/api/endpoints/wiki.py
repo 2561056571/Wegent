@@ -130,24 +130,20 @@ def get_wiki_generations(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(10, ge=1, le=100, description="Items per page"),
     project_id: int = Query(None, description="Filter by project ID"),
-    account_id: Optional[int] = Query(
-        default=None,
-        ge=1,
-        description="Override account ID to execute with a different user context. If not provided, returns all users' generations",
-    ),
     current_user: User = Depends(security.get_current_user),
     wiki_db: Session = Depends(get_wiki_db),
-    main_db: Session = Depends(get_db),
 ):
-    """Get wiki generation task list. If account_id is not provided, returns all users' generations"""
+    """Get wiki generation task list.
+
+    Always uses system-bound user ID (WIKI_DEFAULT_USER_ID) for querying generations.
+    - When WIKI_DEFAULT_USER_ID > 0: returns system-bound user's generations
+    - When WIKI_DEFAULT_USER_ID = 0: returns all users' generations (legacy behavior)
+    """
     skip = (page - 1) * limit
 
-    # When account_id is not provided, pass user_id=0 to query all users' generations
-    # When account_id is provided, use _resolve_user_id to resolve the user ID
-    if account_id is None:
-        user_id = 0  # 0 means query all users
-    else:
-        user_id = _resolve_user_id(account_id, current_user, main_db)
+    # Always use system-bound user ID for querying generations
+    # When WIKI_DEFAULT_USER_ID = 0, pass user_id=0 to query all users' generations (legacy behavior)
+    user_id = wiki_settings.DEFAULT_USER_ID  # 0 means query all users (legacy)
 
     items, total = wiki_service.get_generations(
         db=wiki_db, user_id=user_id, project_id=project_id, skip=skip, limit=limit
@@ -158,22 +154,18 @@ def get_wiki_generations(
 @router.get("/generations/{generation_id}", response_model=WikiGenerationDetail)
 def get_wiki_generation(
     generation_id: int,
-    account_id: Optional[int] = Query(
-        default=None,
-        ge=1,
-        description="Override account ID to execute with a different user context. If not provided, returns generation for all users",
-    ),
     current_user: User = Depends(security.get_current_user),
     wiki_db: Session = Depends(get_wiki_db),
-    main_db: Session = Depends(get_db),
 ):
-    """Get wiki generation task detail. If account_id is not provided, returns generation for all users"""
-    # When account_id is not provided, pass user_id=0 to query all users' generation details
-    # When account_id is provided, use _resolve_user_id to resolve the user ID
-    if account_id is None:
-        user_id = 0  # 0 means query all users
-    else:
-        user_id = _resolve_user_id(account_id, current_user, main_db)
+    """Get wiki generation task detail.
+
+    Always uses system-bound user ID (WIKI_DEFAULT_USER_ID) for querying generation details.
+    - When WIKI_DEFAULT_USER_ID > 0: returns system-bound user's generation
+    - When WIKI_DEFAULT_USER_ID = 0: returns generation for all users (legacy behavior)
+    """
+    # Always use system-bound user ID for querying generation details
+    # When WIKI_DEFAULT_USER_ID = 0, pass user_id=0 to query all users' generation details (legacy behavior)
+    user_id = wiki_settings.DEFAULT_USER_ID  # 0 means query all users (legacy)
 
     generation = wiki_service.get_generation_detail(
         db=wiki_db, generation_id=generation_id, user_id=user_id
@@ -216,22 +208,18 @@ def save_wiki_generation_contents(
 )
 def get_wiki_generation_contents(
     generation_id: int,
-    account_id: Optional[int] = Query(
-        default=None,
-        ge=1,
-        description="Override account ID to execute with a different user context. If not provided, returns contents for all users",
-    ),
     current_user: User = Depends(security.get_current_user),
     wiki_db: Session = Depends(get_wiki_db),
-    main_db: Session = Depends(get_db),
 ):
-    """Get wiki generation contents. If account_id is not provided, returns contents for all users"""
-    # When account_id is not provided, pass user_id=0 to query all users' generation contents
-    # When account_id is provided, use _resolve_user_id to resolve the user ID
-    if account_id is None:
-        user_id = 0  # 0 means query all users
-    else:
-        user_id = _resolve_user_id(account_id, current_user, main_db)
+    """Get wiki generation contents.
+
+    Always uses system-bound user ID (WIKI_DEFAULT_USER_ID) for querying generation contents.
+    - When WIKI_DEFAULT_USER_ID > 0: returns system-bound user's contents
+    - When WIKI_DEFAULT_USER_ID = 0: returns contents for all users (legacy behavior)
+    """
+    # Always use system-bound user ID for querying generation contents
+    # When WIKI_DEFAULT_USER_ID = 0, pass user_id=0 to query all users' generation contents (legacy behavior)
+    user_id = wiki_settings.DEFAULT_USER_ID  # 0 means query all users (legacy)
 
     return wiki_service.get_generation_contents(
         db=wiki_db, generation_id=generation_id, user_id=user_id
@@ -241,17 +229,23 @@ def get_wiki_generation_contents(
 @router.post("/generations/{generation_id}/cancel", response_model=WikiGenerationInDB)
 def cancel_wiki_generation(
     generation_id: int,
-    account_id: Optional[int] = Query(
-        default=None,
-        ge=1,
-        description="Override account ID to execute with a different user context",
-    ),
     current_user: User = Depends(security.get_current_user),
     wiki_db: Session = Depends(get_wiki_db),
-    main_db: Session = Depends(get_db),
 ):
-    """Cancel a wiki generation task"""
-    user_id = _resolve_user_id(account_id, current_user, main_db)
+    """Cancel a wiki generation task.
+
+    Always uses system-bound user ID (WIKI_DEFAULT_USER_ID) for cancellation.
+    - When WIKI_DEFAULT_USER_ID > 0: uses system-bound user for cancellation
+    - When WIKI_DEFAULT_USER_ID = 0: uses current user (legacy behavior)
+    """
+    # Always use system-bound user ID for cancellation
+    # When WIKI_DEFAULT_USER_ID = 0, use current user (legacy behavior)
+    user_id = (
+        wiki_settings.DEFAULT_USER_ID
+        if wiki_settings.DEFAULT_USER_ID > 0
+        else current_user.id
+    )
+
     return wiki_service.cancel_wiki_generation(
         wiki_db=wiki_db, generation_id=generation_id, user_id=user_id
     )
@@ -264,12 +258,23 @@ def get_wiki_projects(
     limit: int = Query(10, ge=1, le=100, description="Items per page"),
     project_type: str = Query(None, description="Filter by project type"),
     source_type: str = Query(None, description="Filter by source type"),
-    db: Session = Depends(get_wiki_db),
+    current_user: User = Depends(security.get_current_user),
+    wiki_db: Session = Depends(get_wiki_db),
+    main_db: Session = Depends(get_db),
 ):
-    """Get wiki project list"""
+    """
+    Get wiki project list filtered by user's repository access permissions.
+
+    Only returns projects where the current user has read access to the underlying repository.
+    """
     skip = (page - 1) * limit
+
+    # Get user from main_db to ensure we have the latest git_info
+    user = main_db.query(User).filter(User.id == current_user.id).first()
+
     items, total = wiki_service.get_projects(
-        db=db,
+        db=wiki_db,
+        user=user,
         skip=skip,
         limit=limit,
         project_type=project_type,
@@ -280,13 +285,18 @@ def get_wiki_projects(
 
 @router.get("/projects/{project_id}", response_model=WikiProjectDetail)
 def get_wiki_project(project_id: int, db: Session = Depends(get_wiki_db)):
-    """Get wiki project detail"""
+    """Get wiki project detail.
+
+    Returns project details with recent generations from system-bound user.
+    When WIKI_DEFAULT_USER_ID = 0, returns all users' generations (legacy behavior).
+    """
     project = wiki_service.get_project_detail(db=db, project_id=project_id)
 
-    # Get recent generations for this project
+    # Get recent generations for this project using system-bound user ID
+    # When WIKI_DEFAULT_USER_ID = 0, returns all users' generations (legacy behavior)
     generations, _ = wiki_service.get_generations(
         db=db,
-        user_id=0,  # Get all users' generations for this project
+        user_id=wiki_settings.DEFAULT_USER_ID,  # Use system-bound user ID
         project_id=project_id,
         skip=0,
         limit=10,
@@ -367,24 +377,31 @@ def get_wiki_config(
     current_user: User = Depends(security.get_current_user),
     main_db: Session = Depends(get_db),
 ):
-    """Get wiki configuration including default team info"""
+    """Get wiki configuration including default team info and bound model"""
     from app.services.adapters.team_kinds import team_kinds_service
 
     default_team_name = wiki_settings.DEFAULT_TEAM_NAME
+    default_user_id = wiki_settings.DEFAULT_USER_ID
     default_team = None
+    has_bound_model = False
+    bound_model_name = None
 
     if default_team_name:
+        # Determine which user_id to use for team lookup
+        # If DEFAULT_USER_ID is set (> 0), use it; otherwise use current user
+        lookup_user_id = default_user_id if default_user_id > 0 else current_user.id
+
         # Find team by name and namespace
         team = team_kinds_service.get_team_by_name_and_namespace(
             db=main_db,
             team_name=default_team_name,
             team_namespace="default",
-            user_id=current_user.id,
+            user_id=lookup_user_id,
         )
         if team:
-            # Convert Kind to team dict to get agent_type
+            # Convert Kind to team dict to get agent_type and bot info
             team_dict = team_kinds_service._convert_to_team_dict(
-                team, main_db, current_user.id
+                team, main_db, lookup_user_id
             )
             default_team = {
                 "id": team.id,
@@ -392,8 +409,39 @@ def get_wiki_config(
                 "agent_type": team_dict.get("agent_type"),
             }
 
+            # Check if team has a bound model by examining the first bot's agent_config
+            # Note: team_dict uses "bots" key (not "members") with structure:
+            # [{"bot_id": ..., "bot_prompt": ..., "role": ..., "bot": {"agent_config": {...}, "shell_type": ...}}]
+            bots = team_dict.get("bots", [])
+            if bots:
+                first_bot_info = bots[0]
+                # The bot summary is nested under "bot" key
+                bot_summary = first_bot_info.get("bot", {})
+                agent_config = bot_summary.get("agent_config", {})
+                # Check if agent_config has bind_model (predefined model)
+                if agent_config and isinstance(agent_config, dict):
+                    bind_model = agent_config.get("bind_model")
+                    if bind_model:
+                        has_bound_model = True
+                        bound_model_name = bind_model
+                    else:
+                        # Check if agent_config has model configuration (custom config)
+                        # Custom config means the bot has a model configured
+                        # For custom config, agent_config contains protocol, api_key, base_url, model etc.
+                        if (
+                            agent_config.get("protocol")
+                            or agent_config.get("api_key")
+                            or agent_config.get("model")
+                        ):
+                            has_bound_model = True
+                            bound_model_name = "custom"
+
     return {
         "default_team_name": default_team_name,
         "default_team": default_team,
+        "default_user_id": default_user_id,
+        "has_bound_model": has_bound_model,
+        "bound_model_name": bound_model_name,
         "enabled": wiki_settings.ENABLED,
+        "default_language": wiki_settings.DEFAULT_LANGUAGE,
     }

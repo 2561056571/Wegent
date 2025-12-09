@@ -6,20 +6,18 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { WikiProject, WikiGeneration } from '@/types/wiki';
-import { GitRepoInfo, GitBranch, Team } from '@/types/api';
+import { GitRepoInfo, GitBranch } from '@/types/api';
 import {
   fetchWikiProjects,
   createWikiGeneration,
   cancelWikiGeneration,
   fetchWikiGenerations,
   fetchWikiConfig,
+  WikiConfigResponse,
 } from '@/apis/wiki';
-import { teamApis } from '@/apis/team';
 import { githubApis } from '@/apis/github';
-import { Model, DEFAULT_MODEL_NAME } from '@/features/tasks/components/ModelSelector';
 
 interface UseWikiProjectsOptions {
-  accountId?: number;
   pageSize?: number;
 }
 
@@ -58,7 +56,7 @@ function extractDomain(gitUrl: string): string {
 }
 
 export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
-  const { accountId, pageSize = 20 } = options;
+  const { pageSize = 20 } = options;
 
   // State
   const [projects, setProjects] = useState<(WikiProject & { generations?: WikiGeneration[] })[]>(
@@ -84,46 +82,40 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
   const [formData, setFormData] = useState({
     source_url: '',
     branch_name: '',
-    language: 'en',
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Team and Model state
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [teamsLoading, setTeamsLoading] = useState(false);
-  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
-  const [selectedModel, setSelectedModel] = useState<Model | null>(null);
-  const [forceOverride, setForceOverride] = useState(false);
-  const [defaultTeamId, setDefaultTeamId] = useState<number | null>(null);
+  // Wiki config state (system-level configuration)
+  const [wikiConfig, setWikiConfig] = useState<WikiConfigResponse | null>(null);
+  const [configLoading, setConfigLoading] = useState(false);
 
   // Confirm dialog state
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [pendingCancelProjectId, setPendingCancelProjectId] = useState<number | null>(null);
 
   // Helper function to load generations for projects
-  const loadProjectsWithGenerations = useCallback(
-    async (projectItems: WikiProject[]) => {
-      return Promise.all(
-        projectItems.map(async project => {
-          try {
-            const generationsResponse = await fetchWikiGenerations(project.id, 1, 10, accountId);
-            return {
-              ...project,
-              generations: generationsResponse.items,
-            };
-          } catch (err) {
-            console.error(`Failed to load generations for project ${project.id}:`, err);
-            return {
-              ...project,
-              generations: [],
-            };
-          }
-        })
-      );
-    },
-    [accountId]
-  );
+  // Note: We don't pass accountId here because wiki generations are owned by the system user
+  // (WIKI_DEFAULT_USER_ID). The backend will use the system-configured user ID to query generations.
+  const loadProjectsWithGenerations = useCallback(async (projectItems: WikiProject[]) => {
+    return Promise.all(
+      projectItems.map(async project => {
+        try {
+          // Don't pass accountId - let backend use system-configured DEFAULT_USER_ID
+          const generationsResponse = await fetchWikiGenerations(project.id, 1, 10);
+          return {
+            ...project,
+            generations: generationsResponse.items,
+          };
+        } catch (err) {
+          console.error(`Failed to load generations for project ${project.id}:`, err);
+          return {
+            ...project,
+            generations: [],
+          };
+        }
+      })
+    );
+  }, []);
 
   // Load projects with generations (initial load or refresh)
   const loadProjects = useCallback(async () => {
@@ -172,82 +164,42 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
       loadingRef.current = false;
     }
   }, [currentPage, pageSize, hasMore, loadingMore, projects.length, loadProjectsWithGenerations]);
-  // Load wiki config and teams on mount
+  // Load wiki config on mount
   useEffect(() => {
-    const loadTeamsAndConfig = async () => {
-      setTeamsLoading(true);
+    const loadWikiConfig = async () => {
+      setConfigLoading(true);
       try {
-        // First, fetch wiki config to get default team info
         const config = await fetchWikiConfig();
-        const defaultTeamIdFromConfig = config.default_team?.id || null;
-        setDefaultTeamId(defaultTeamIdFromConfig);
-
-        // Then, fetch all teams
-        const response = await teamApis.getTeams({ page: 1, limit: 100 });
-        setTeams(response.items);
-
-        // Auto-select default wiki team from config
-        if (defaultTeamIdFromConfig) {
-          const defaultTeam = response.items.find(t => t.id === defaultTeamIdFromConfig);
-          if (defaultTeam) {
-            setSelectedTeam(defaultTeam);
-          } else if (response.items.length > 0) {
-            setSelectedTeam(response.items[0]);
-          }
-        } else if (response.items.length > 0) {
-          setSelectedTeam(response.items[0]);
-        }
+        setWikiConfig(config);
       } catch (err) {
-        console.error('Failed to load teams or wiki config:', err);
+        console.error('Failed to load wiki config:', err);
       } finally {
-        setTeamsLoading(false);
+        setConfigLoading(false);
       }
     };
-    loadTeamsAndConfig();
+    loadWikiConfig();
   }, []);
 
   // Open add repo modal
   const handleAddRepo = useCallback(() => {
+    // Note: The check for bound model is now handled in the modal component
+    // using the wikiConfig.has_bound_model flag
     setIsModalOpen(true);
     setSelectedRepo(null);
     setSelectedBranch(null);
     setFormData({
       source_url: '',
       branch_name: '',
-      language: 'en',
     });
     setFormErrors({});
-    // Reset model selection but keep team selection
-    setSelectedModel(null);
-    setForceOverride(false);
-  }, []);
+  }, [wikiConfig]);
 
   // Close modal
   const handleCloseModal = useCallback(() => {
     setIsModalOpen(false);
     setSelectedRepo(null);
     setSelectedBranch(null);
-    // Reset model selection but keep team selection
-    setSelectedModel(null);
-    setForceOverride(false);
-  }, []);
-
-  // Handle team change
-  const handleTeamChange = useCallback((team: Team | null) => {
-    setSelectedTeam(team);
-    // Reset model selection when team changes
-    setSelectedModel(null);
-    setForceOverride(false);
-  }, []);
-
-  // Handle model change
-  const handleModelChange = useCallback((model: Model | null) => {
-    setSelectedModel(model);
-  }, []);
-
-  // Handle force override change
-  const handleForceOverrideChange = useCallback((force: boolean) => {
-    setForceOverride(force);
+    setFormErrors({});
   }, []);
 
   // Handle repo change from selector - automatically fetch and use default branch
@@ -289,27 +241,26 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
             branch_name: branches[0].name,
           }));
         } else {
-          // No branches available, use 'main' as fallback
-          setSelectedBranch({ name: 'main', protected: false, default: true });
+          // No branches available, use empty string to let git use repository's default branch
+          setSelectedBranch(null);
           setFormData(prev => ({
             ...prev,
-            branch_name: 'main',
+            branch_name: '',
           }));
         }
       } catch (error) {
         console.error('Failed to fetch branches:', error);
-        // Fallback to 'main' on error
-        setSelectedBranch({ name: 'main', protected: false, default: true });
+        // On error, use empty string to let git use repository's default branch
+        setSelectedBranch(null);
         setFormData(prev => ({
           ...prev,
-          branch_name: 'main',
+          branch_name: '',
         }));
       }
     } else {
       setSelectedBranch(null);
     }
   }, []);
-
   // Handle branch change from selector (kept for backward compatibility)
   const handleBranchChange = useCallback((branch: GitBranch | null) => {
     setSelectedBranch(branch);
@@ -325,14 +276,6 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
         return newErrors;
       });
     }
-  }, []);
-
-  // Handle language change
-  const handleLanguageChange = useCallback((language: string) => {
-    setFormData(prev => ({
-      ...prev,
-      language,
-    }));
   }, []);
 
   // Handle form input change (for backward compatibility)
@@ -360,6 +303,12 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
     async (e: React.FormEvent) => {
       e.preventDefault();
 
+      // Check if wiki has bound model - this should be blocked by UI,
+      // but double-check here as a safeguard
+      if (wikiConfig && !wikiConfig.has_bound_model) {
+        return;
+      }
+
       // Validate using selected repo (branch is auto-selected from default)
       const errors: Record<string, string> = {};
       if (!selectedRepo) {
@@ -372,7 +321,8 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
       }
 
       // Use selected branch name (already auto-selected from default branch)
-      const branchName = selectedBranch?.name || 'main';
+      // When branch is empty, git will clone the repository's default branch
+      const branchName = selectedBranch?.name || '';
 
       setIsSubmitting(true);
 
@@ -381,10 +331,9 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
         const sourceType = parseSourceType(sourceUrl);
         const sourceDomain = extractDomain(sourceUrl);
 
-        // Determine model_id to send
-        // When default model is selected, don't pass model_id (use bot's predefined model)
-        const modelId =
-          selectedModel?.name === DEFAULT_MODEL_NAME ? undefined : selectedModel?.name;
+        // Note: team_id and model_id are no longer sent - they are configured in backend
+        // Use system-configured language from wikiConfig
+        const language = wikiConfig?.default_language || 'en';
 
         const requestData = {
           project_name: selectedRepo!.git_repo,
@@ -394,7 +343,7 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
           project_type: 'git',
           source_type: sourceType,
           generation_type: 'full',
-          language: formData.language,
+          language: language,
           source_snapshot: {
             type: 'git',
             branch_name: branchName,
@@ -408,8 +357,6 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
             snapshot_time: new Date().toISOString(),
             file_count: 0,
           },
-          team_id: selectedTeam?.id || 0,
-          model_id: modelId,
           ext: {},
         };
 
@@ -428,15 +375,7 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
         setIsSubmitting(false);
       }
     },
-    [
-      selectedRepo,
-      selectedBranch,
-      formData.language,
-      selectedTeam,
-      selectedModel,
-      handleCloseModal,
-      loadProjects,
-    ]
+    [selectedRepo, selectedBranch, wikiConfig, handleCloseModal, loadProjects]
   );
 
   // Open cancel confirmation dialog
@@ -510,13 +449,9 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
     isSubmitting,
     selectedRepo,
     selectedBranch,
-    // Team and Model state
-    teams,
-    teamsLoading,
-    selectedTeam,
-    selectedModel,
-    forceOverride,
-    defaultTeamId,
+    // Wiki config state
+    wikiConfig,
+    configLoading,
     // Confirm dialog state
     confirmDialogOpen,
     pendingCancelProjectId,
@@ -528,10 +463,6 @@ export function useWikiProjects(options: UseWikiProjectsOptions = {}) {
     handleInputChange,
     handleRepoChange,
     handleBranchChange,
-    handleLanguageChange,
-    handleTeamChange,
-    handleModelChange,
-    handleForceOverrideChange,
     handleSubmit,
     handleCancelClick,
     confirmCancelGeneration,
