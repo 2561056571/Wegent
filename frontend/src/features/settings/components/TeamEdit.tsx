@@ -121,8 +121,8 @@ export default function TeamEdit(props: TeamEditProps) {
       solo: null, // null means all agents are allowed
       pipeline: ['ClaudeCode', 'Agno'],
       route: ['Agno'],
-      coordinate: ['Agno'],
-      collaborate: ['Agno'],
+      coordinate: ['ClaudeCode', 'Agno'],
+      collaborate: ['ClaudeCode', 'Agno'],
     };
     const allowed = MODE_AGENT_FILTER[mode];
     return allowed === null ? undefined : allowed;
