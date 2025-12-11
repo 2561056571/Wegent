@@ -212,10 +212,9 @@ class ClaudeCodeTeamAgent(ClaudeCodeAgent):
         Execute task in coordinate mode.
 
         In coordinate mode:
-        1. Leader analyzes the task and breaks it down
-        2. Leader delegates subtasks to specific members
-        3. Members execute their assigned tasks
-        4. Leader summarizes the results
+        1. Leader analyzes the task and creates a task plan
+        2. Each member processes their assigned subtask based on their expertise
+        3. Leader receives all member outputs and synthesizes final result
 
         Returns:
             TaskStatus: Execution status
@@ -223,19 +222,101 @@ class ClaudeCodeTeamAgent(ClaudeCodeAgent):
         logger.info("Executing in COORDINATE mode")
 
         self.add_thinking_step(
-            title="Starting coordinate mode execution",
+            title="Starting coordinate mode - assigning tasks to specialists",
+            report_immediately=True,
+            use_i18n_keys=False,
+            details={"members": self.team.member_names}
+        )
+
+        # Step 1: Have leader create a task plan
+        planning_prompt = self.team._build_planning_prompt(self.prompt)
+
+        logger.info(f"Leader {self.team.leader.name} creating task plan...")
+        await self.team.leader.query(planning_prompt)
+
+        # Collect leader's plan
+        plan_parts = []
+        async for msg in self.team.leader.client.receive_response():
+            if hasattr(msg, 'content'):
+                plan_parts.append(str(msg.content))
+
+        task_plan = "\n".join(plan_parts)
+        logger.info(f"Task plan created: {task_plan[:500]}...")
+
+        self.add_thinking_step(
+            title="Task plan created, delegating to specialists",
             report_immediately=True,
             use_i18n_keys=False
         )
 
-        # Build coordination prompt for leader
-        coordination_prompt = self.team._build_coordination_prompt(self.prompt)
+        # Step 2: Parse and delegate tasks to members
+        member_tasks = self._parse_delegations(task_plan)
 
-        # Send to leader
-        logger.info(f"Sending coordination prompt to leader: {self.team.leader.name}")
-        await self.team.leader.query(coordination_prompt)
+        # Step 3: Execute member tasks in parallel
+        member_responses: Dict[str, str] = {}
 
-        # Process leader's response
+        if member_tasks:
+            # Execute delegated tasks
+            tasks = []
+            for member_name, task_desc in member_tasks.items():
+                member = self._get_member_by_name(member_name)
+                if member:
+                    self.add_thinking_step(
+                        title=f"Delegating to {member_name}",
+                        report_immediately=True,
+                        use_i18n_keys=False,
+                        details={"task": task_desc[:200]}
+                    )
+                    task = asyncio.create_task(self._query_member(member, task_desc))
+                    tasks.append((member_name, task))
+
+            # Wait for all members to complete
+            for name, task in tasks:
+                try:
+                    response = await task
+                    member_responses[name] = response
+                    logger.info(f"Received response from member: {name}")
+                except Exception as e:
+                    logger.error(f"Error getting response from member {name}: {e}")
+                    member_responses[name] = f"Error: {str(e)}"
+        else:
+            # Fallback: if no explicit delegation, assign to all members based on their role
+            logger.info("No explicit delegation found, assigning based on member expertise")
+            tasks = []
+            for member in self.team.members:
+                member_prompt = f"""Based on your expertise, contribute to the following task:
+
+{self.prompt}
+
+Focus on your area of specialization as defined in your system prompt."""
+                self.add_thinking_step(
+                    title=f"Assigning to {member.name}",
+                    report_immediately=True,
+                    use_i18n_keys=False
+                )
+                task = asyncio.create_task(self._query_member(member, member_prompt))
+                tasks.append((member.name, task))
+
+            for name, task in tasks:
+                try:
+                    response = await task
+                    member_responses[name] = response
+                except Exception as e:
+                    logger.error(f"Error from member {name}: {e}")
+                    member_responses[name] = f"Error: {str(e)}"
+
+        # Step 4: Have leader synthesize results
+        self.add_thinking_step(
+            title="All specialists completed, leader synthesizing results",
+            report_immediately=True,
+            use_i18n_keys=False,
+            details={"responses_count": len(member_responses)}
+        )
+
+        summary_prompt = self.team._build_summary_prompt(member_responses, self.prompt)
+        await self.team.leader.query(summary_prompt)
+
+        # Process leader's final response
         result = await process_response(
             self.team.leader.client,
             self.state_manager,
@@ -244,11 +325,54 @@ class ClaudeCodeTeamAgent(ClaudeCodeAgent):
             session_id=self.team.leader.session_id
         )
 
-        # Check for member delegation in leader's response
-        # This is a simplified implementation - in production, you'd parse
-        # the leader's response to identify delegated tasks
-
         return result
+
+    def _parse_delegations(self, plan_text: str) -> Dict[str, str]:
+        """
+        Parse delegation instructions from leader's plan.
+
+        Looks for patterns like:
+        - @member_name: task description
+        - Delegate to member_name: task description
+
+        Args:
+            plan_text: The leader's task plan text
+
+        Returns:
+            Dictionary mapping member names to their assigned tasks
+        """
+        delegations = {}
+        member_names = self.team.member_names
+
+        # Pattern 1: @member_name: task
+        pattern1 = r'@(\w+[-\w]*)\s*:\s*([^\n@]+)'
+        matches = re.findall(pattern1, plan_text, re.IGNORECASE)
+        for name, task in matches:
+            # Find matching member (case-insensitive)
+            for member_name in member_names:
+                if name.lower() in member_name.lower() or member_name.lower() in name.lower():
+                    delegations[member_name] = task.strip()
+                    break
+
+        # Pattern 2: Delegate to X: task or X should: task
+        pattern2 = r'(?:delegate\s+to|assign\s+to)\s+(\w+[-\w]*)\s*:\s*([^\n]+)'
+        matches = re.findall(pattern2, plan_text, re.IGNORECASE)
+        for name, task in matches:
+            for member_name in member_names:
+                if name.lower() in member_name.lower() or member_name.lower() in name.lower():
+                    if member_name not in delegations:
+                        delegations[member_name] = task.strip()
+                    break
+
+        logger.info(f"Parsed {len(delegations)} delegations from plan")
+        return delegations
+
+    def _get_member_by_name(self, name: str) -> Optional[ClaudeCodeMember]:
+        """Get a team member by name."""
+        for member in self.team.members:
+            if member.name == name:
+                return member
+        return None
 
     async def _execute_collaborate_mode(self) -> TaskStatus:
         """
@@ -318,6 +442,7 @@ class ClaudeCodeTeamAgent(ClaudeCodeAgent):
     async def _query_member(self, member: ClaudeCodeMember, prompt: str) -> str:
         """
         Send a query to a team member and collect the response.
+        Connects the member on-demand if not already connected.
 
         Args:
             member: The team member to query
@@ -327,6 +452,11 @@ class ClaudeCodeTeamAgent(ClaudeCodeAgent):
             The member's response as a string
         """
         try:
+            # Connect member on-demand if not already connected
+            if member.client is None:
+                member_index = self.team.members.index(member) if member in self.team.members else 0
+                await self.team.connect_member(member, member_index)
+
             await member.query(prompt)
 
             # Collect response

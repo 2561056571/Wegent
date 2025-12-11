@@ -80,29 +80,42 @@ class ClaudeCodeTeam:
 
     async def initialize(self, cwd: str) -> None:
         """
-        Initialize the team by connecting all members.
+        Initialize the team by connecting the leader.
+        Members are connected on-demand when they receive tasks.
 
         Args:
             cwd: Working directory for all members
         """
         self._cwd = cwd
 
-        # Connect leader
+        # Connect leader immediately (always needed)
         leader_session_id = f"{self.session_id}_leader" if not self.shared_context else self.session_id
         await self.leader.connect(cwd, leader_session_id)
 
-        # Connect all members
-        for i, member in enumerate(self.members):
-            if self.shared_context:
-                member_session_id = self.session_id
-            else:
-                member_session_id = f"{self.session_id}_member_{i}"
-            await member.connect(cwd, member_session_id)
-
         logger.info(
             f"Initialized team '{self.name}' with leader '{self.leader.name}' "
-            f"and {len(self.members)} members in '{self.mode}' mode"
+            f"({len(self.members)} members available for on-demand connection) in '{self.mode}' mode"
         )
+
+    async def connect_member(self, member: 'ClaudeCodeMember', index: int = 0) -> None:
+        """
+        Connect a specific team member on-demand.
+
+        Args:
+            member: The member to connect
+            index: Index of the member for session ID generation
+        """
+        if member.client is not None:
+            # Already connected
+            return
+
+        if self.shared_context:
+            member_session_id = self.session_id
+        else:
+            member_session_id = f"{self.session_id}_member_{index}"
+
+        await member.connect(self._cwd, member_session_id)
+        logger.info(f"Connected member '{member.name}' on-demand")
 
     async def cleanup(self) -> None:
         """Cleanup all team resources."""
@@ -154,6 +167,51 @@ class ClaudeCodeTeam:
 - Coordinate the work and provide a unified response
 """
         return coordination_prompt
+
+    def _build_planning_prompt(self, original_prompt: str) -> str:
+        """
+        Build a planning prompt for the leader to create a task plan.
+
+        Args:
+            original_prompt: The original user prompt
+
+        Returns:
+            Planning prompt for the leader
+        """
+        member_descriptions = []
+        for member in self.members:
+            desc = f"- **{member.name}**: {member.system_prompt[:300]}..." if len(
+                member.system_prompt) > 300 else f"- **{member.name}**: {member.system_prompt}"
+            member_descriptions.append(desc)
+
+        members_info = "\n".join(member_descriptions)
+
+        planning_prompt = f"""You are the team leader. Your task is to create a plan to delegate work to your team members.
+
+**Available Team Members:**
+{members_info}
+
+**Original Request:**
+{original_prompt}
+
+**Your Task:**
+Create a task delegation plan. For each team member you want to assign work to, use this format:
+
+@member-name: Specific task description for this member
+
+For example:
+@wiki-overview-bot: Generate the project overview section including introduction and features
+@wiki-architecture-bot: Create the system architecture diagram and component descriptions
+
+**Important:**
+- Assign tasks only to the most relevant team members based on their expertise
+- Be specific about what each member should produce
+- Each member will work in parallel, so tasks should be independent
+- You can skip members if their expertise is not needed for this request
+
+Now create your delegation plan:
+"""
+        return planning_prompt
 
     def _build_collaboration_prompt(self, original_prompt: str) -> str:
         """
