@@ -22,14 +22,16 @@ export type AgentType = 'ClaudeCode' | 'Agno' | 'Dify';
  * Mode to supported agent types mapping
  * - solo: All agent types (ClaudeCode, Agno, Dify)
  * - pipeline: ClaudeCode and Agno only (no Dify)
- * - route/coordinate/collaborate: Agno only (multi-agent collaboration modes)
+ * - route: Agno only (message routing is Agno-specific)
+ * - coordinate: ClaudeCode and Agno (leader delegates to specific members)
+ * - collaborate: ClaudeCode and Agno (all members work in parallel)
  */
 const MODE_AGENT_FILTER: Record<TeamMode, AgentType[] | null> = {
   solo: null, // null means all agents are allowed
   pipeline: ['ClaudeCode', 'Agno'],
   route: ['Agno'],
-  coordinate: ['Agno'],
-  collaborate: ['Agno'],
+  coordinate: ['ClaudeCode', 'Agno'],
+  collaborate: ['ClaudeCode', 'Agno'],
 };
 
 /**

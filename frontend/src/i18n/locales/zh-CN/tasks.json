@@ -53,6 +53,11 @@
     "execution_completed": "执行完成",
     "execution_failed": "执行失败",
     "execution_cancelled": "执行已取消",
+    "initialize_team": "初始化团队",
+    "team_coordinate_mode": "团队协调模式",
+    "team_collaborate_mode": "团队协作模式",
+    "team_member_delegating": "分配任务给团队成员",
+    "team_member_summarizing": "汇总团队结果",
     "tool_actions": {
       "Read": "读取文件",
       "Edit": "编辑文件",
