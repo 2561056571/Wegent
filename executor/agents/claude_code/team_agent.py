@@ -22,17 +22,15 @@ Supported collaboration modes:
 - collaborate: Leader delegates to all specialists in parallel
 """
 
-import asyncio
 import os
 from typing import Dict, Any, List, Optional
 
 from shared.logger import setup_logger
 from shared.status import TaskStatus
-from shared.models.task import ThinkingStep, ExecutionResult
 from executor.config import config
 
 from .claude_code_agent import ClaudeCodeAgent
-from .subagent_builder import SubagentBuilder, SubagentDefinition, build_team_prompt_with_agents
+from .subagent_builder import SubagentBuilder, build_team_prompt_with_agents
 from .response_processor import process_response
 
 logger = setup_logger("claude_code_team_agent")
@@ -68,7 +66,8 @@ class ClaudeCodeTeamAgent(ClaudeCodeAgent):
         self.mode = task_data.get("mode", CollaborationMode.COORDINATE)
         self._is_team_mode = self._detect_team_mode(task_data)
         self.subagent_builder: Optional[SubagentBuilder] = None
-        self._original_prompt = self.prompt  # Store original prompt
+        self._original_prompt = self.prompt
+        self._agent_names: List[str] = []
 
         if self._is_team_mode:
             logger.info(
@@ -100,15 +99,12 @@ class ClaudeCodeTeamAgent(ClaudeCodeAgent):
         bots = task_data.get("bot", [])
         mode = task_data.get("mode", "")
 
-        # Check if we have multiple bots
         if len(bots) < 2:
             return False
 
-        # Check if the mode is a team collaboration mode
         if mode in [CollaborationMode.COORDINATE, CollaborationMode.COLLABORATE]:
             return True
 
-        # Check if any bot has a 'leader' role
         for bot in bots:
             if bot.get("role") == "leader":
                 return True
@@ -120,22 +116,27 @@ class ClaudeCodeTeamAgent(ClaudeCodeAgent):
         Initialize the Claude Code Team Agent.
 
         For team mode:
-        1. Creates .claude/agents/ directory
-        2. Generates subagent definition files for each team member
+        1. Runs parent initialization (saves settings, downloads skills, etc.)
+        2. Creates .claude/agents/ directory with subagent definitions
         3. Enhances the leader's prompt with subagent information
 
         Returns:
             TaskStatus: Initialization status
         """
-        # First run parent initialization
-        status = super().initialize()
-        if status != TaskStatus.SUCCESS:
-            return status
-
-        if not self._is_team_mode:
-            return TaskStatus.SUCCESS
-
         try:
+            # Check if task was cancelled before initialization
+            if self.task_state_manager.is_cancelled(self.task_id):
+                logger.info(f"Task {self.task_id} was cancelled before initialization")
+                return TaskStatus.COMPLETED
+
+            # Run parent initialization first
+            status = super().initialize()
+            if status != TaskStatus.SUCCESS:
+                return status
+
+            if not self._is_team_mode:
+                return TaskStatus.SUCCESS
+
             self.add_thinking_step_by_key(
                 title_key="thinking.initialize_team",
                 report_immediately=False
@@ -153,38 +154,35 @@ class ClaudeCodeTeamAgent(ClaudeCodeAgent):
             # Get team member configurations (excluding leader)
             bots = self.task_data.get("bot", [])
             member_configs = [b for b in bots if b.get("role") != "leader"]
-            leader_config = next((b for b in bots if b.get("role") == "leader"), bots[0] if bots else None)
+            leader_config = next(
+                (b for b in bots if b.get("role") == "leader"),
+                bots[0] if bots else None
+            )
 
             # Create subagent files for members
             self.subagent_builder.create_subagents_from_config(member_configs)
 
             # Get created agent names
-            agent_names = self.subagent_builder.get_agent_names()
+            self._agent_names = self.subagent_builder.get_agent_names()
 
-            # Enhance the prompt with subagent information
-            if agent_names and leader_config:
+            # Enhance the system prompt with subagent information
+            if self._agent_names and leader_config:
                 leader_prompt = leader_config.get("system_prompt", "")
                 enhanced_prompt = build_team_prompt_with_agents(
                     leader_prompt,
-                    agent_names,
+                    self._agent_names,
                     self.mode
                 )
-                # Update the options to use enhanced system prompt
-                if "system_prompt" in self.options:
-                    self.options["system_prompt"] = enhanced_prompt
-                else:
-                    self.options["system_prompt"] = enhanced_prompt
+                self.options["system_prompt"] = enhanced_prompt
+                logger.info(f"Enhanced leader prompt with {len(self._agent_names)} subagents")
 
-                logger.info(f"Enhanced leader prompt with {len(agent_names)} subagents")
-
-            # Add thinking step about team setup
             self.add_thinking_step(
-                title=f"Team initialized with {len(agent_names)} specialist agents",
+                title=f"Team initialized with {len(self._agent_names)} specialist agents",
                 report_immediately=True,
                 use_i18n_keys=False,
                 details={
                     "mode": self.mode,
-                    "specialists": agent_names
+                    "specialists": self._agent_names
                 }
             )
 
@@ -193,6 +191,10 @@ class ClaudeCodeTeamAgent(ClaudeCodeAgent):
 
         except Exception as e:
             logger.error(f"Failed to initialize team: {e}")
+            self.add_thinking_step_by_key(
+                title_key="thinking.initialize_failed",
+                report_immediately=False
+            )
             return TaskStatus.FAILED
 
     async def _async_execute(self) -> TaskStatus:
@@ -207,11 +209,9 @@ class ClaudeCodeTeamAgent(ClaudeCodeAgent):
             TaskStatus: Execution status
         """
         if not self._is_team_mode:
-            # Fall back to single agent mode
             return await super()._async_execute()
 
         try:
-            # Check cancellation
             if self.task_state_manager.is_cancelled(self.task_id):
                 logger.info(f"Task {self.task_id} was cancelled before team execution")
                 return TaskStatus.COMPLETED
@@ -231,9 +231,7 @@ class ClaudeCodeTeamAgent(ClaudeCodeAgent):
             progress = 75
             self._update_progress(progress)
 
-            # Execute using parent's execution logic
-            # The enhanced system prompt will guide the leader to use Task tool
-            # to delegate to specialists
+            # Execute using parent's client
             await self.client.query(task_prompt, session_id=self.session_id)
 
             # Process the response
@@ -251,7 +249,6 @@ class ClaudeCodeTeamAgent(ClaudeCodeAgent):
             return self._handle_execution_error(e, "team execution")
 
         finally:
-            # Cleanup subagent files
             if self.subagent_builder:
                 self.subagent_builder.cleanup()
 
@@ -262,8 +259,6 @@ class ClaudeCodeTeamAgent(ClaudeCodeAgent):
         Returns:
             Task prompt string
         """
-        agent_names = self.subagent_builder.get_agent_names() if self.subagent_builder else []
-
         if self.mode == CollaborationMode.COORDINATE:
             return f"""You have a team of specialists available via the Task tool.
 
@@ -273,12 +268,12 @@ class ClaudeCodeTeamAgent(ClaudeCodeAgent):
 **Instructions:**
 1. Analyze what needs to be done
 2. Delegate specific parts to the appropriate specialists using Task tool
-3. Available specialists: {', '.join(agent_names)}
+3. Available specialists: {', '.join(self._agent_names)}
 4. Collect their responses and synthesize a final result
 5. You can delegate to multiple specialists in parallel if their tasks are independent
 
 Use the Task tool like this:
-- For quick tasks: Task(description="brief desc", prompt="detailed task", subagent_type="specialist-name")
+- Task(description="brief desc", prompt="detailed task", subagent_type="specialist-name")
 
 Begin by analyzing the task and delegating to your specialists."""
 
@@ -290,7 +285,7 @@ Begin by analyzing the task and delegating to your specialists."""
 
 **Instructions:**
 1. Send this task to ALL available specialists simultaneously
-2. Available specialists: {', '.join(agent_names)}
+2. Available specialists: {', '.join(self._agent_names)}
 3. Each specialist will contribute their expertise
 4. Collect all responses and create a unified final output
 
@@ -303,10 +298,8 @@ Delegate to all specialists now, then synthesize their contributions."""
         Returns:
             bool: True if cancellation was successful
         """
-        # First cancel the parent
         result = super().cancel_run()
 
-        # Cleanup subagent files
         if self.subagent_builder:
             self.subagent_builder.cleanup()
 
