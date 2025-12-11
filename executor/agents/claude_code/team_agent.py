@@ -31,7 +31,6 @@ from executor.config import config
 
 from .claude_code_agent import ClaudeCodeAgent
 from .subagent_builder import SubagentBuilder, build_team_prompt_with_agents
-from .response_processor import process_response
 
 logger = setup_logger("claude_code_team_agent")
 
@@ -216,11 +215,9 @@ class ClaudeCodeTeamAgent(ClaudeCodeAgent):
                 logger.info(f"Task {self.task_id} was cancelled before team execution")
                 return TaskStatus.COMPLETED
 
-            progress = 65
-            self._update_progress(progress)
-
-            # Build the task prompt based on mode
-            task_prompt = self._build_team_task_prompt()
+            # Build the task prompt based on mode and override self.prompt
+            # This will be used by parent's _async_execute
+            self.prompt = self._build_team_task_prompt()
 
             self.add_thinking_step(
                 title=f"Executing in {self.mode} mode",
@@ -228,20 +225,8 @@ class ClaudeCodeTeamAgent(ClaudeCodeAgent):
                 use_i18n_keys=False
             )
 
-            progress = 75
-            self._update_progress(progress)
-
-            # Execute using parent's client
-            await self.client.query(task_prompt, session_id=self.session_id)
-
-            # Process the response
-            result = await process_response(
-                self.client,
-                self.state_manager,
-                self.thinking_manager,
-                self.task_state_manager,
-                session_id=self.session_id
-            )
+            # Call parent's _async_execute which handles client initialization and query
+            result = await super()._async_execute()
 
             return result
 
