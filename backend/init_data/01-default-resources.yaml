@@ -491,6 +491,8 @@ metadata:
   user_id: 1
 spec:
   mcpServers: {}
+  skills:
+    - wiki_submit
   systemPrompt: |
     You are an Overview Documentation Specialist, expert in creating project overview documentation.
 
@@ -535,6 +537,8 @@ metadata:
   user_id: 1
 spec:
   mcpServers: {}
+  skills:
+    - wiki_submit
   systemPrompt: |
     You are an Architecture Documentation Specialist, expert in documenting system design and architecture.
 
@@ -585,6 +589,8 @@ metadata:
   user_id: 1
 spec:
   mcpServers: {}
+  skills:
+    - wiki_submit
   systemPrompt: |
     You are a Module Documentation Specialist, expert in documenting code modules and components.
 
@@ -635,6 +641,8 @@ metadata:
   user_id: 1
 spec:
   mcpServers: {}
+  skills:
+    - wiki_submit
   systemPrompt: |
     You are an API Documentation Specialist, expert in documenting APIs and endpoints.
 
@@ -699,6 +707,8 @@ metadata:
   user_id: 1
 spec:
   mcpServers: {}
+  skills:
+    - wiki_submit
   systemPrompt: |
     You are a Guide Documentation Specialist, expert in creating setup and usage guides.
 
