@@ -11,11 +11,16 @@ from typing import Dict, Any, Optional
 from shared.logger import setup_logger
 from executor.agents.base import Agent
 from executor.agents.claude_code.claude_code_agent import ClaudeCodeAgent
+from executor.agents.claude_code.team_agent import ClaudeCodeTeamAgent
 from executor.agents.agno.agno_agent import AgnoAgent
 from executor.agents.dify.dify_agent import DifyAgent
 from executor.agents.image_validator.image_validator_agent import ImageValidatorAgent
 
 logger = setup_logger("agent_factory")
+
+
+# Collaboration modes that indicate team execution
+TEAM_COLLABORATION_MODES = ["coordinate", "collaborate"]
 
 
 class AgentFactory:
@@ -30,6 +35,7 @@ class AgentFactory:
 
     _agents = {
         "claudecode": ClaudeCodeAgent,
+        "claudecodeteam": ClaudeCodeTeamAgent,
         "agno": AgnoAgent,
         "dify": DifyAgent,
         "imagevalidator": ImageValidatorAgent,
@@ -40,6 +46,9 @@ class AgentFactory:
         """
         Get an agent instance based on agent_type
 
+        For ClaudeCode agents, automatically determines whether to use
+        single agent or team agent based on task configuration.
+
         Args:
             agent_type: The type of agent to create
             task_data: The task data to pass to the agent
@@ -47,12 +56,54 @@ class AgentFactory:
         Returns:
             An instance of the requested agent, or None if the agent_type is not supported
         """
-        agent_class = cls._agents.get(agent_type.lower())
+        normalized_type = agent_type.lower()
+
+        # Special handling for ClaudeCode: check if team mode is needed
+        if normalized_type == "claudecode":
+            if cls._should_use_team_mode(task_data):
+                logger.info("Detected team configuration, using ClaudeCodeTeamAgent")
+                return ClaudeCodeTeamAgent(task_data)
+
+        agent_class = cls._agents.get(normalized_type)
         if agent_class:
             return agent_class(task_data)
         else:
             logger.error(f"Unsupported agent type: {agent_type}")
             return None
+
+    @classmethod
+    def _should_use_team_mode(cls, task_data: Dict[str, Any]) -> bool:
+        """
+        Determine if task should use team mode based on configuration.
+
+        Team mode is enabled when:
+        - There are multiple bots configured (more than 1)
+        - The mode is 'coordinate' or 'collaborate'
+        - Any bot has a 'leader' role
+
+        Args:
+            task_data: The task data dictionary
+
+        Returns:
+            True if team mode should be used
+        """
+        bots = task_data.get("bot", [])
+        mode = task_data.get("mode", "")
+
+        # Check if we have multiple bots
+        if len(bots) < 2:
+            return False
+
+        # Check if the mode is a team collaboration mode
+        if mode in TEAM_COLLABORATION_MODES:
+            return True
+
+        # Check if any bot has a 'leader' role
+        for bot in bots:
+            if bot.get("role") == "leader":
+                return True
+
+        return False
 
     @classmethod
     def is_external_api_agent(cls, agent_type: str) -> bool:

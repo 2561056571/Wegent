@@ -29,6 +29,11 @@ from claude_agent_sdk.types import (
 logger = setup_logger("claude_response_processor")
 
 
+# Track active subagent delegations (tool_use_id -> subagent_info)
+# This is a module-level dict to track Task tool calls and match them with results
+_active_subagent_delegations: Dict[str, Dict[str, Any]] = {}
+
+
 # Maximum retry count for API errors per session
 MAX_API_ERROR_RETRIES = 3
 
@@ -172,6 +177,111 @@ def _handle_system_message(msg: SystemMessage, state_manager, thinking_manager=N
         )
 
 
+def _handle_subagent_delegation(block: ToolUseBlock, thinking_manager=None):
+    """Handle Task tool call which indicates subagent delegation
+    
+    Args:
+        block: ToolUseBlock for Task tool
+        thinking_manager: Optional ThinkingStepManager instance
+    """
+    tool_input = block.input or {}
+    subagent_type = tool_input.get("subagent_type", "unknown")
+    description = tool_input.get("description", "")
+    prompt = tool_input.get("prompt", "")
+    
+    # Store delegation info for later matching with result
+    _active_subagent_delegations[block.id] = {
+        "subagent_type": subagent_type,
+        "description": description,
+        "prompt": prompt,
+        "start_time": datetime.now().isoformat()
+    }
+    
+    # Log subagent delegation
+    logger.info(f"========== SUBAGENT DELEGATION ==========")
+    logger.info(f"  Tool Use ID: {block.id}")
+    logger.info(f"  Subagent Type: {subagent_type}")
+    logger.info(f"  Description: {description}")
+    logger.info(f"  Prompt: {prompt[:200]}..." if len(prompt) > 200 else f"  Prompt: {prompt}")
+    logger.info(f"==========================================")
+    
+    # Add thinking step for subagent delegation
+    if thinking_manager:
+        thinking_manager.add_thinking_step(
+            title=f"🤖 Delegating to subagent: {subagent_type}",
+            report_immediately=True,
+            use_i18n_keys=False,
+            details={
+                "type": "subagent_delegation",
+                "tool_use_id": block.id,
+                "subagent_type": subagent_type,
+                "description": description,
+                "prompt_preview": prompt[:500] if prompt else ""
+            }
+        )
+
+
+def _handle_subagent_result(tool_use_id: str, content: Any, is_error: bool, thinking_manager=None):
+    """Handle Task tool result which indicates subagent completion
+    
+    Args:
+        tool_use_id: The tool_use_id that matches the original Task call
+        content: The result content from subagent
+        is_error: Whether the subagent execution failed
+        thinking_manager: Optional ThinkingStepManager instance
+    """
+    # Get delegation info
+    delegation_info = _active_subagent_delegations.pop(tool_use_id, None)
+    
+    if delegation_info:
+        subagent_type = delegation_info.get("subagent_type", "unknown")
+        start_time = delegation_info.get("start_time", "")
+        
+        # Calculate duration if possible
+        duration_str = ""
+        if start_time:
+            try:
+                start_dt = datetime.fromisoformat(start_time)
+                duration = datetime.now() - start_dt
+                duration_str = f" (took {duration.total_seconds():.1f}s)"
+            except Exception:
+                pass
+        
+        status = "❌ FAILED" if is_error else "✅ COMPLETED"
+        
+        # Log subagent completion
+        logger.info(f"========== SUBAGENT {status} ==========")
+        logger.info(f"  Tool Use ID: {tool_use_id}")
+        logger.info(f"  Subagent Type: {subagent_type}{duration_str}")
+        logger.info(f"  Is Error: {is_error}")
+        
+        # Log result preview (truncated for readability)
+        content_str = str(content) if content else ""
+        if len(content_str) > 500:
+            logger.info(f"  Result Preview: {content_str[:500]}...")
+        else:
+            logger.info(f"  Result: {content_str}")
+        logger.info(f"==========================================")
+        
+        # Add thinking step for subagent completion
+        if thinking_manager:
+            thinking_manager.add_thinking_step(
+                title=f"{'❌' if is_error else '✅'} Subagent {subagent_type} {status.split()[1].lower()}{duration_str}",
+                report_immediately=True,
+                use_i18n_keys=False,
+                details={
+                    "type": "subagent_result",
+                    "tool_use_id": tool_use_id,
+                    "subagent_type": subagent_type,
+                    "is_error": is_error,
+                    "result_preview": content_str[:1000] if content_str else ""
+                }
+            )
+    else:
+        # This might be a result for a non-subagent Task tool call
+        logger.debug(f"Received Task result for unknown tool_use_id: {tool_use_id}")
+
+
 def _handle_user_message(msg: UserMessage, thinking_manager=None):
     """处理用户消息，提取详细信息"""
     
@@ -244,6 +354,11 @@ def _handle_user_message(msg: UserMessage, thinking_manager=None):
                 message_details["message"]["content"].append(result_detail)
                 
                 logger.info(f"UserMessage ToolResultBlock: tool_use_id = {block.tool_use_id}, is_error = {block.is_error}")
+                
+                # ========== SUBAGENT RESULT DETECTION ==========
+                # Check if this is a result from a subagent Task call
+                if block.tool_use_id in _active_subagent_delegations:
+                    _handle_subagent_result(block.tool_use_id, block.content, block.is_error, thinking_manager)
             
             else:
                 # 未知块类型，符合目标格式
@@ -328,6 +443,11 @@ def _handle_assistant_message(msg: AssistantMessage, state_manager, thinking_man
             message_details["message"]["content"].append(tool_detail)
             
             logger.info(f"ToolUseBlock: tool = {block.name}")
+            
+            # ========== SUBAGENT DETECTION ==========
+            # Detect Task tool calls which indicate subagent delegation
+            if block.name == "Task":
+                _handle_subagent_delegation(block, thinking_manager)
                 
         elif isinstance(block, TextBlock):
             # 文本内容详情，符合目标格式

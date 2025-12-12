@@ -57,6 +57,10 @@
     "execution_completed": "Execution Completed",
     "execution_failed": "Execution Failed",
     "execution_cancelled": "Execution Cancelled",
+    "initialize_team": "Initializing Team",
+    "team_coordinate_mode": "Team Coordinate Mode",
+    "team_member_delegating": "Delegating to Team Members",
+    "team_member_summarizing": "Summarizing Team Results",
     "tool_actions": {
       "Read": "Read Files",
       "Edit": "Edit Files",
