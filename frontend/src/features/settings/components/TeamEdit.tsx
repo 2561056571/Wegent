@@ -122,7 +122,7 @@ export default function TeamEdit(props: TeamEditProps) {
       pipeline: ['ClaudeCode', 'Agno'],
       route: ['Agno'],
       coordinate: ['ClaudeCode', 'Agno'],
-      collaborate: ['ClaudeCode', 'Agno'],
+      collaborate: ['Agno'],
     };
     const allowed = MODE_AGENT_FILTER[mode];
     return allowed === null ? undefined : allowed;

@@ -31,7 +31,7 @@ const MODE_AGENT_FILTER: Record<TeamMode, AgentType[] | null> = {
   pipeline: ['ClaudeCode', 'Agno'],
   route: ['Agno'],
   coordinate: ['ClaudeCode', 'Agno'],
-  collaborate: ['ClaudeCode', 'Agno'],
+  collaborate: ['Agno'],
 };
 
 /**

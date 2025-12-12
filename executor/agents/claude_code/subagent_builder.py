@@ -190,29 +190,67 @@ class SubagentBuilder:
 
     def _extract_description(self, system_prompt: str, fallback_name: str) -> str:
         """
-        Extract a short description from the system prompt.
+        Extract a short description from the system prompt and format it
+        to tell Claude WHEN to use this subagent.
+        
+        According to official Claude Code documentation, the description field
+        should describe WHEN to call this subagent, not what the subagent is.
+        Adding "Use proactively" makes Claude more likely to use it.
+        
+        Note: This method is only called for subagents (not leader), as leader
+        is skipped in create_subagents_from_config().
 
         Args:
             system_prompt: The full system prompt
             fallback_name: Name to use if no description can be extracted
 
         Returns:
-            Short description string
+            Short description string with "Use proactively to" prefix
         """
-        # Try to get first meaningful line
+        # Try to get first meaningful line from system prompt
         lines = system_prompt.strip().split('\n')
+        extracted_desc = None
+        
         for line in lines:
             line = line.strip()
             # Skip empty lines and headers
             if not line or line.startswith('#'):
                 continue
             # Use first non-empty, non-header line
-            # Truncate to 100 chars for description
-            if len(line) > 100:
-                return line[:97] + "..."
-            return line
-
-        return f"Specialist agent: {fallback_name}"
+            extracted_desc = line
+            break
+        
+        if not extracted_desc:
+            extracted_desc = f"handle specialized tasks for {fallback_name}"
+        
+        # Check if description already starts with "use proactively" (case insensitive)
+        if extracted_desc.lower().startswith("use proactively"):
+            # Already has the prefix, just truncate if needed
+            if len(extracted_desc) > 150:
+                return extracted_desc[:147] + "..."
+            return extracted_desc
+        
+        # Add "Use proactively to" prefix as recommended by official docs
+        # This makes Claude more likely to use the subagent
+        desc_lower = extracted_desc.lower()
+        
+        # If it starts with "You are" or similar, extract the role
+        if desc_lower.startswith("you are"):
+            # "You are an API specialist" -> "handle API documentation tasks"
+            role_part = extracted_desc[7:].strip()  # Remove "You are"
+            if role_part.startswith("a ") or role_part.startswith("an "):
+                role_part = role_part.split(" ", 1)[1] if " " in role_part else role_part
+            # Truncate role part if too long
+            if len(role_part) > 80:
+                role_part = role_part[:77] + "..."
+            return f"Use proactively to {role_part.rstrip('.')}"
+        
+        # For other descriptions, just add the prefix
+        # Truncate to keep total length reasonable
+        if len(extracted_desc) > 120:
+            extracted_desc = extracted_desc[:117] + "..."
+        
+        return f"Use proactively to {extracted_desc.lower().rstrip('.')}"
 
     def cleanup(self) -> None:
         """Remove all created subagent files."""
