@@ -433,7 +433,7 @@ status:
 apiVersion: agent.wecode.io/v1
 kind: Ghost
 metadata:
-  name: wiki-coordinator-ghost
+  name: wiki-ghost
   namespace: default
   user_id: 1
 spec:
@@ -441,226 +441,49 @@ spec:
   skills:
     - wiki_submit
   systemPrompt: |
-    You are the Wiki Documentation Coordinator. Analyze requests and delegate to specialists.
+    You are a professional technical documentation expert specialized in generating comprehensive wiki documentation for code repositories.
 
-    ## Specialists
-    - Overview: project intro, features, tech stack
-    - Architecture: system design, Mermaid diagrams
-    - Module: code modules, classes, functions
-    - API: endpoints, schemas, examples
-    - Guide: setup, configuration, troubleshooting
+    ## Core Responsibilities
+    1. Analyze code structure, architecture, and workflows
+    2. Generate clear, well-organized Markdown documentation
+    3. Create Mermaid diagrams for architecture visualization
+    4. Write in a professional yet accessible style
+    5. Include practical examples and use cases
 
-    ## Process
-    1. Analyze request → identify needed sections
-    2. Delegate to appropriate specialists
-    3. Submit completed sections via wiki_submit
+    ## Documentation Quality Standards
+    - Deliver comprehensive sections with concrete evidence (file paths, code snippets, configuration keys)
+    - Avoid placeholders or summary-only content - provide complete documentation
+    - Use consistent terminology and cross-reference related sections
+    - Target 5-6 screens of content per major section
 
-    Use wiki_submit skill to submit each section progressively.
-status:
-  state: Available
----
-apiVersion: agent.wecode.io/v1
-kind: Ghost
-metadata:
-  name: wiki-overview-ghost
-  namespace: default
-  user_id: 1
-spec:
-  mcpServers: {}
-  systemPrompt: |
-    You are an Overview Documentation Specialist. Generate `overview` section.
+    ## Section Types
+    - `overview`: Project objectives, capabilities, tech stack
+    - `architecture`: System design, Mermaid diagrams, data flows
+    - `module`: Module responsibilities, key classes/functions, dependencies
+    - `api`: Endpoints, authentication, request/response schemas
+    - `guide`: Setup, configuration, troubleshooting procedures
+    - `deep`: In-depth analysis of complex topics
 
-    ## Contents
-    - Project introduction and purpose
-    - Key features and capabilities
-    - Technology stack
-    - Project structure overview
-    - Quick start guide
-
-    Output Markdown with headers, bullet points, code blocks, and real file paths.
-status:
-  state: Available
----
-apiVersion: agent.wecode.io/v1
-kind: Ghost
-metadata:
-  name: wiki-architecture-ghost
-  namespace: default
-  user_id: 1
-spec:
-  mcpServers: {}
-  systemPrompt: |
-    You are an Architecture Documentation Specialist. Generate `architecture` section.
-
-    ## Contents
-    - System overview with Mermaid diagrams (flowchart, sequenceDiagram, erDiagram)
-    - Component architecture and responsibilities
-    - Data flow between components
-    - Design patterns and integration points
-
-    Output Markdown with 2-3 Mermaid diagrams and explanations.
-status:
-  state: Available
----
-apiVersion: agent.wecode.io/v1
-kind: Ghost
-metadata:
-  name: wiki-module-ghost
-  namespace: default
-  user_id: 1
-spec:
-  mcpServers: {}
-  systemPrompt: |
-    You are a Module Documentation Specialist. Generate `module` section.
-
-    ## Contents
-    - Module overview and purpose
-    - Key classes/functions with signatures
-    - Dependencies and dependents
-    - Usage examples with code snippets
-
-    Output Markdown with module name as header and practical examples.
-status:
-  state: Available
----
-apiVersion: agent.wecode.io/v1
-kind: Ghost
-metadata:
-  name: wiki-api-ghost
-  namespace: default
-  user_id: 1
-spec:
-  mcpServers: {}
-  systemPrompt: |
-    You are an API Documentation Specialist. Generate `api` section.
-
-    ## Contents
-    - Authentication methods
-    - Endpoints table (method, path, description)
-    - Request/response schemas with JSON examples
-    - Error codes and handling
-
-    Output Markdown with tables and JSON code blocks.
-status:
-  state: Available
----
-apiVersion: agent.wecode.io/v1
-kind: Ghost
-metadata:
-  name: wiki-guide-ghost
-  namespace: default
-  user_id: 1
-spec:
-  mcpServers: {}
-  systemPrompt: |
-    You are a Guide Documentation Specialist. Generate `guide` section.
-
-    ## Contents
-    - Prerequisites and installation steps
-    - Configuration (env vars, config files)
-    - Development and testing workflow
-    - Deployment and troubleshooting
-
-    Output Markdown with numbered steps and copy-paste ready commands.
+    ## Submission
+    Use the wiki_submit skill (wiki_submit.js) to submit documentation sections. 
 status:
   state: Available
 ---
 apiVersion: agent.wecode.io/v1
 kind: Bot
 metadata:
-  name: wiki-coordinator-bot
+  name: wiki-bot
   namespace: default
   user_id: 1
 spec:
   ghostRef:
-    name: wiki-coordinator-ghost
+    name: wiki-ghost
     namespace: default
   shellRef:
     name: ClaudeCode
     namespace: default
 status:
   state: Available
----
-apiVersion: agent.wecode.io/v1
-kind: Bot
-metadata:
-  name: wiki-overview-bot
-  namespace: default
-  user_id: 1
-spec:
-  ghostRef:
-    name: wiki-overview-ghost
-    namespace: default
-  shellRef:
-    name: ClaudeCode
-    namespace: default
-status:
-  state: Available
----
-apiVersion: agent.wecode.io/v1
-kind: Bot
-metadata:
-  name: wiki-architecture-bot
-  namespace: default
-  user_id: 1
-spec:
-  ghostRef:
-    name: wiki-architecture-ghost
-    namespace: default
-  shellRef:
-    name: ClaudeCode
-    namespace: default
-status:
-  state: Available
----
-apiVersion: agent.wecode.io/v1
-kind: Bot
-metadata:
-  name: wiki-module-bot
-  namespace: default
-  user_id: 1
-spec:
-  ghostRef:
-    name: wiki-module-ghost
-    namespace: default
-  shellRef:
-    name: ClaudeCode
-    namespace: default
-status:
-  state: Available
----
-apiVersion: agent.wecode.io/v1
-kind: Bot
-metadata:
-  name: wiki-api-bot
-  namespace: default
-  user_id: 1
-spec:
-  ghostRef:
-    name: wiki-api-ghost
-    namespace: default
-  shellRef:
-    name: ClaudeCode
-    namespace: default
-status:
-  state: Available
----
-apiVersion: agent.wecode.io/v1
-kind: Bot
-metadata:
-  name: wiki-guide-bot
-  namespace: default
-  user_id: 1
-spec:
-  ghostRef:
-    name: wiki-guide-ghost
-    namespace: default
-  shellRef:
-    name: ClaudeCode
-    namespace: default
-status:
-  state: Available
----
 apiVersion: agent.wecode.io/v1
 kind: Team
 metadata:
@@ -668,41 +491,17 @@ metadata:
   namespace: default
   user_id: 1
 spec:
-  description: A coordinated team for generating comprehensive wiki documentation. The leader analyzes requests and delegates to specialists based on their expertise. Supports ClaudeCode and Agno.
+  description: A team for generating comprehensive wiki documentation for code repositories.
   members:
     - role: leader
       botRef:
-        name: wiki-coordinator-bot
+        name: wiki-bot
         namespace: default
-      prompt: "Coordinate documentation generation. Analyze the request, delegate section types to appropriate specialists, and submit completed sections progressively."
-    - role: member
-      botRef:
-        name: wiki-overview-bot
-        namespace: default
-      prompt: "Generate the overview section: project introduction, features, tech stack, and getting started guide."
-    - role: member
-      botRef:
-        name: wiki-architecture-bot
-        namespace: default
-      prompt: "Generate the architecture section: system design, Mermaid diagrams, component relationships, and data flows."
-    - role: member
-      botRef:
-        name: wiki-module-bot
-        namespace: default
-      prompt: "Generate module documentation: document key modules one at a time, including classes, functions, and usage examples."
-    - role: member
-      botRef:
-        name: wiki-api-bot
-        namespace: default
-      prompt: "Generate API documentation: endpoints, authentication, request/response schemas, and examples."
-    - role: member
-      botRef:
-        name: wiki-guide-bot
-        namespace: default
-      prompt: "Generate guide documentation: setup instructions, configuration, development workflow, and troubleshooting."
-  collaborationModel: coordinate
+      prompt: ""
+  collaborationModel: solo
   bind_mode: []
   workflow:
-    mode: coordinate
+    mode: solo
 status:
+  state: Available
   state: Available
