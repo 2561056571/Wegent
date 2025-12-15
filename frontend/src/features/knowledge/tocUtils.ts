@@ -6,116 +6,23 @@ import type { ReactNode, ReactElement } from 'react'
 import type { WikiContent, WikiTocItem } from '@/types/wiki'
 
 /**
- * Generate a slug from heading text (must match backend implementation).
- * @param text - Heading text
- * @returns Slug string for anchor ID
- */
-export function generateHeadingSlug(text: string): string {
-  // Convert to lowercase and trim
-  let slug = text.toLowerCase().trim()
-
-  // Remove special characters except hyphens and alphanumerics
-  slug = slug.replace(/[^\w\s-]/g, '')
-
-  // Replace whitespace with hyphens
-  slug = slug.replace(/[\s_]+/g, '-')
-
-  // Remove consecutive hyphens
-  slug = slug.replace(/-+/g, '-')
-
-  // Remove leading/trailing hyphens
-  slug = slug.replace(/^-+|-+$/g, '')
-
-  return slug || 'heading'
-}
-
-/**
- * ID generator class to handle duplicate heading IDs consistently.
- * Used to ensure the same ID is generated for the same heading text
- * across TOC parsing and WikiContent rendering.
- */
-export class HeadingIdGenerator {
-  private existingIds: Set<string> = new Set()
-
-  /**
-   * Generate a unique ID for a heading text.
-   * If the same text appears multiple times, it will get -1, -2, etc. suffix.
-   */
-  generateId(text: string): string {
-    const baseId = generateHeadingSlug(text)
-    let id = baseId
-    let counter = 1
-
-    while (this.existingIds.has(id)) {
-      id = `${baseId}-${counter}`
-      counter++
-    }
-
-    this.existingIds.add(id)
-    return id
-  }
-
-  /**
-   * Reset the generator state.
-   */
-  reset(): void {
-    this.existingIds.clear()
-  }
-}
-
-/**
- * Parse table of contents from Markdown content (frontend fallback).
- * Used when backend does not provide TOC data.
- * @param content - Markdown text content
- * @param maxLevel - Maximum heading level to parse (default 3)
- * @returns Array of TOC items
- */
-export function parseTocFromMarkdown(content: string, maxLevel: number = 3): WikiTocItem[] {
-  if (!content) return []
-
-  const tocItems: WikiTocItem[] = []
-  const idGenerator = new HeadingIdGenerator()
-
-  // Match Markdown headings (## and ###)
-  const headingRegex = /^(#{2,3})\s+(.+?)(?:\s*{#[\w-]+})?\s*$/gm
-  let match
-
-  while ((match = headingRegex.exec(content)) !== null) {
-    const hashes = match[1]
-    let text = match[2].trim()
-    const level = hashes.length
-
-    // Only include headings up to maxLevel
-    if (level > maxLevel) continue
-
-    // Clean up the heading text (remove inline formatting markers)
-    text = text.replace(/\*\*(.+?)\*\*/g, '$1') // Remove bold
-    text = text.replace(/\*(.+?)\*/g, '$1') // Remove italic
-    text = text.replace(/`(.+?)`/g, '$1') // Remove inline code
-    text = text.replace(/\[(.+?)\]\(.+?\)/g, '$1') // Remove links
-
-    const id = idGenerator.generateId(text)
-    tocItems.push({ id, text, level })
-  }
-
-  return tocItems
-}
-
-/**
- * Get TOC from WikiContent, using ext.toc if available, otherwise parse from content.
+ * Get TOC from WikiContent, only using backend-provided ext.toc.
+ * No frontend parsing fallback - if TOC is not provided by backend, returns empty array.
+ * This ensures TOC IDs are consistent with the rendered heading IDs.
  * @param content - WikiContent object
- * @returns Array of TOC items
+ * @returns Array of TOC items from backend, or empty array if not available
  */
 export function getTocFromContent(content: WikiContent | null): WikiTocItem[] {
   if (!content) return []
 
-  // Prefer backend-provided TOC
+  // Only use backend-provided TOC, no fallback parsing
   if (content.ext?.toc && Array.isArray(content.ext.toc) && content.ext.toc.length > 0) {
     return content.ext.toc
   }
 
-  // Fallback: parse from content
-  return parseTocFromMarkdown(content.content)
+  // Return empty array if no TOC data from backend
+  // This prevents ID mismatch issues between TOC and rendered headings
+  return []
 }
 
 /**

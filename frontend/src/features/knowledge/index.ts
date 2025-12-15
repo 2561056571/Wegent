@@ -34,10 +34,7 @@ export { WikiTableOfContents, WikiTableOfContentsMobile } from './WikiTableOfCon
 export { useActiveHeading } from './useActiveHeading';
 export { scrollToHeading, scrollToHeadingInContainer } from './scrollUtils';
 export {
-  generateHeadingSlug,
-  parseTocFromMarkdown,
   getTocFromContent,
   getTextContent,
   getH2TocItems,
-  HeadingIdGenerator,
 } from './tocUtils';

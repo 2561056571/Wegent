@@ -101,7 +101,7 @@ export default function WikiDetailPage() {
 
             {/* Main Content Area */}
             <div ref={contentRef} className="flex-1 overflow-auto p-6 bg-surface/5">
-              <WikiContent content={selectedContent} loading={loading} error={error} />
+              <WikiContent content={selectedContent} loading={loading} error={error} toc={currentToc} />
             </div>
 
             {/* Right Sidebar - Table of Contents (Desktop) */}
