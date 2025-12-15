@@ -87,7 +87,7 @@ export default function WikiDetailPage() {
           </TopNavigation>
 
           <div className="flex h-full overflow-hidden">
-            {/* Left Sidebar - Page List */}
+            {/* Left Sidebar - Page List with H2 sub-navigation */}
             <WikiDetailSidebar
               wikiDetail={wikiDetail}
               loading={loading}
@@ -95,6 +95,8 @@ export default function WikiDetailPage() {
               selectedContentId={selectedContentId}
               onBackToList={handleBackToList}
               onSelectContent={handleSelectContent}
+              onTocItemClick={handleTocItemClick}
+              activeTocId={activeHeadingId}
             />
 
             {/* Main Content Area */}

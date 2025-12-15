@@ -2,9 +2,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-import { WikiGenerationDetail, WikiContent } from '@/types/wiki';
+import { WikiGenerationDetail, WikiContent, WikiTocItem } from '@/types/wiki';
 import { getSortedContents } from './wikiUtils';
+import { getTocFromContent, getH2TocItems } from './tocUtils';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useMemo } from 'react';
 
 interface WikiDetailSidebarProps {
   wikiDetail: WikiGenerationDetail | null;
@@ -13,10 +15,13 @@ interface WikiDetailSidebarProps {
   selectedContentId: number | null;
   onBackToList: () => void;
   onSelectContent: (contentId: number) => void;
+  onTocItemClick?: (id: string) => void;
+  activeTocId?: string | null;
 }
 
 /**
  * Wiki detail page sidebar component
+ * Shows page list with H2 level sub-navigation for selected content
  */
 export function WikiDetailSidebar({
   wikiDetail,
@@ -25,8 +30,26 @@ export function WikiDetailSidebar({
   selectedContentId,
   onBackToList,
   onSelectContent,
+  onTocItemClick,
+  activeTocId,
 }: WikiDetailSidebarProps) {
   const { t } = useTranslation('common');
+
+  // Get sorted contents
+  const sortedContents = useMemo(() => getSortedContents(wikiDetail), [wikiDetail]);
+
+  // Build a map of content ID to H2 TOC items
+  const contentTocMap = useMemo(() => {
+    const map = new Map<number, WikiTocItem[]>();
+    sortedContents.forEach((content) => {
+      const fullToc = getTocFromContent(content);
+      const h2Items = getH2TocItems(fullToc);
+      if (h2Items.length > 0) {
+        map.set(content.id, h2Items);
+      }
+    });
+    return map;
+  }, [sortedContents]);
 
   return (
     <div className="w-64 border-r border-border overflow-y-auto bg-surface/10">
@@ -110,20 +133,50 @@ export function WikiDetailSidebar({
         ) : error ? (
           <div className="text-red-500 text-sm">{error}</div>
         ) : (
-          <ul className="space-y-1">
-            {getSortedContents(wikiDetail).map((content: WikiContent) => (
-              <li
-                key={content.id}
-                className={`p-2 rounded-md cursor-pointer transition-colors duration-200 ${
-                  selectedContentId === content.id
-                    ? 'bg-primary/15 text-primary font-medium border-l-2 border-primary pl-3'
-                    : 'hover:bg-surface-hover pl-3.5'
-                }`}
-                onClick={() => onSelectContent(content.id)}
-              >
-                <span className="text-sm">{content.title}</span>
-              </li>
-            ))}
+          <ul className="space-y-0.5">
+            {sortedContents.map((content: WikiContent) => {
+              const isSelected = selectedContentId === content.id;
+              const h2Items = contentTocMap.get(content.id) || [];
+
+              return (
+                <li key={content.id}>
+                  {/* Main content item */}
+                  <div
+                    className={`p-2 rounded-md cursor-pointer transition-colors duration-200 ${
+                      isSelected
+                        ? 'bg-primary/15 text-primary font-medium border-l-2 border-primary pl-3'
+                        : 'hover:bg-surface-hover pl-3.5'
+                    }`}
+                    onClick={() => onSelectContent(content.id)}
+                  >
+                    <span className="text-sm">{content.title}</span>
+                  </div>
+
+                  {/* H2 sub-navigation (only show for selected content) */}
+                  {isSelected && h2Items.length > 0 && (
+                    <ul className="ml-4 mt-1 space-y-0.5 border-l border-border/50">
+                      {h2Items.map((tocItem) => (
+                        <li key={tocItem.id}>
+                          <button
+                            className={`w-full text-left pl-3 pr-2 py-1.5 text-xs rounded-r transition-colors duration-200 ${
+                              activeTocId === tocItem.id
+                                ? 'text-primary bg-primary/10 border-l-2 border-primary -ml-[1px]'
+                                : 'text-text-secondary hover:text-text-primary hover:bg-surface-hover'
+                            }`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onTocItemClick?.(tocItem.id);
+                            }}
+                          >
+                            <span className="line-clamp-2">{tocItem.text}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

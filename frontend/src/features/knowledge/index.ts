@@ -33,4 +33,11 @@ export type { ContentWriteSummary, ContentWrite } from './wikiUtils';
 export { WikiTableOfContents, WikiTableOfContentsMobile } from './WikiTableOfContents';
 export { useActiveHeading } from './useActiveHeading';
 export { scrollToHeading, scrollToHeadingInContainer } from './scrollUtils';
-export { generateHeadingSlug, parseTocFromMarkdown, getTocFromContent, getTextContent } from './tocUtils';
+export {
+  generateHeadingSlug,
+  parseTocFromMarkdown,
+  getTocFromContent,
+  getTextContent,
+  getH2TocItems,
+  HeadingIdGenerator,
+} from './tocUtils';

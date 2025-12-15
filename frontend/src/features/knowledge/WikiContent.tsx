@@ -11,12 +11,12 @@ import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { ReactNode, useState, useCallback, useEffect, useRef } from 'react';
+import { ReactNode, useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type { HTMLAttributes } from 'react';
 import { CheckIcon, ClipboardIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/outline';
 import { DiagramModal } from './DiagramModal';
 import { useTranslation } from '@/hooks/useTranslation';
-import { generateHeadingSlug, getTextContent } from './tocUtils';
+import { HeadingIdGenerator, getTextContent } from './tocUtils';
 
 interface MarkdownComponentProps extends HTMLAttributes<HTMLElement> {
   node?: unknown;
@@ -290,6 +290,14 @@ function CodeBlock({
 export function WikiContent({ content, loading, error }: WikiContentProps) {
   const { t } = useTranslation('common');
 
+  // Create a stable ID generator that resets when content changes
+  const idGeneratorRef = useRef(new HeadingIdGenerator());
+
+  // Reset ID generator when content changes
+  useMemo(() => {
+    idGeneratorRef.current = new HeadingIdGenerator();
+  }, [content?.id]);
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
@@ -441,7 +449,7 @@ export function WikiContent({ content, loading, error }: WikiContentProps) {
                 ),
                 h2: ({ node: _node, children, ...props }: MarkdownComponentProps) => {
                   const text = getTextContent(children);
-                  const id = generateHeadingSlug(text);
+                  const id = idGeneratorRef.current.generateId(text);
                   return (
                     <h2
                       id={id}
@@ -456,7 +464,7 @@ export function WikiContent({ content, loading, error }: WikiContentProps) {
                 },
                 h3: ({ node: _node, children, ...props }: MarkdownComponentProps) => {
                   const text = getTextContent(children);
-                  const id = generateHeadingSlug(text);
+                  const id = idGeneratorRef.current.generateId(text);
                   return (
                     <h3
                       id={id}
