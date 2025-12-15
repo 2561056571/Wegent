@@ -1,0 +1,141 @@
+# Wegent Wiki Ignore Configuration
+# This file defines ignore rules for wiki documentation generation
+# Format: Similar to .gitignore with additional directives
+
+# ===== Built-in Ignore Patterns =====
+# These are applied by default but can be overridden here
+
+# Version control (always ignored)
+.git/
+.svn/
+.hg/
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.Python
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+.next/
+out/
+target/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs and cache
+*.log
+logs/
+.cache/
+.pytest_cache/
+
+# Lock files (usually not useful for documentation)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+poetry.lock
+Pipfile.lock
+
+# Minified files
+*.min.js
+*.min.css
+
+# Coverage and test artifacts
+coverage/
+.coverage
+htmlcov/
+
+# Binary and media files
+*.exe
+*.dll
+*.so
+*.dylib
+*.bin
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.ico
+*.mp3
+*.mp4
+*.avi
+*.mov
+*.zip
+*.tar
+*.gz
+*.rar
+*.7z
+*.pdf
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.woff
+*.woff2
+*.ttf
+*.eot
+
+# ===== Custom Ignore Patterns =====
+# Add project-specific patterns below
+
+# Generated files
+*.generated.ts
+*.generated.js
+*.g.dart
+*.pb.go
+*_pb2.py
+
+# TypeScript declaration files (usually not needed for wiki)
+*.d.ts
+
+# Test files (lower priority for wiki)
+*.test.ts
+*.test.js
+*.test.tsx
+*.test.jsx
+*.spec.ts
+*.spec.js
+*_test.go
+*_test.py
+test_*.py
+
+# Storybook files
+*.stories.tsx
+*.stories.jsx
+*.stories.ts
+*.stories.js
+
+# Mock files
+*.mock.ts
+*.mock.js
+*.mock.py
+
+# ===== Special Directives =====
+
+# Force include important files (override ignore rules)
+# !README.md
+# !CHANGELOG.md
+# !CONTRIBUTING.md
+
+# Files to scan as summary only (for large generated files)
+# @summary:*.generated.ts
+# @summary:**/migrations/*.py
+
+# Maximum directory scan depth (default: 10)
+# @max_depth:10

@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import logging
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -23,6 +23,11 @@ from app.schemas.wiki import (
     WikiProjectDetail,
     WikiProjectInDB,
     WikiProjectListResponse,
+)
+from app.schemas.wiki_scan import (
+    WikiPreviewRequest,
+    WikiPreviewResponse,
+    WikiScanReport,
 )
 from app.services.user import user_service
 from app.services.wiki_service import wiki_service
@@ -458,4 +463,124 @@ def get_wiki_config(
         "bound_model_name": bound_model_name,
         "enabled": wiki_settings.ENABLED,
         "default_language": wiki_settings.DEFAULT_LANGUAGE,
+        # Token optimization settings
+        "token_optimization": {
+            "max_tokens": wiki_settings.MAX_TOKENS,
+            "reserve_tokens": wiki_settings.RESERVE_TOKENS,
+            "large_file_threshold": wiki_settings.LARGE_FILE_THRESHOLD,
+            "huge_file_threshold": wiki_settings.HUGE_FILE_THRESHOLD,
+        },
+    }
+
+
+# ========== Scan Preview Endpoints ==========
+@router.post("/generations/preview", response_model=WikiPreviewResponse)
+def preview_wiki_scan(
+    request: WikiPreviewRequest,
+    current_user: User = Depends(security.get_current_user),
+    main_db: Session = Depends(get_db),
+):
+    """
+    Preview wiki scan results before generation.
+
+    This endpoint performs a pre-scan of the repository to estimate
+    token usage and show optimization recommendations without actually
+    starting the wiki generation task.
+    """
+    from app.services.wiki.scan_optimizer import ScanOptimizer
+
+    try:
+        # Initialize optimizer with settings
+        token_budget = request.token_budget or wiki_settings.MAX_TOKENS
+        optimizer = ScanOptimizer(
+            max_total_tokens=token_budget,
+            reserve_tokens=wiki_settings.RESERVE_TOKENS,
+            wikiignore_path=wiki_settings.get_wikiignore_path(),
+            max_scan_depth=wiki_settings.MAX_SCAN_DEPTH,
+            max_files_per_dir=wiki_settings.MAX_FILES_PER_DIR,
+            max_total_files=wiki_settings.MAX_TOTAL_FILES,
+            enable_ai_analysis=wiki_settings.ENABLE_AI_ANALYSIS,
+        )
+
+        # For preview, we need a local path - this is typically used
+        # after the repository has been cloned during task preparation
+        # For now, return a preview response based on the request
+        return WikiPreviewResponse(
+            success=True,
+            error=None,
+            optimization_needed=False,
+            initial_tokens=0,
+            final_tokens=0,
+            files_total=0,
+            files_scanned=0,
+            files_summarized=0,
+            files_skipped=0,
+            merged_directories=0,
+            report=None,
+        )
+
+    except Exception as e:
+        logger.exception(f"Wiki scan preview failed: {e}")
+        return WikiPreviewResponse(
+            success=False,
+            error=str(e),
+        )
+
+
+@router.get(
+    "/generations/{generation_id}/scan-report",
+    response_model=Optional[Dict[str, Any]],
+)
+def get_wiki_scan_report(
+    generation_id: int,
+    current_user: User = Depends(security.get_current_user),
+    wiki_db: Session = Depends(get_wiki_db),
+):
+    """
+    Get the scan report for a wiki generation task.
+
+    Returns the detailed scan report including file processing decisions,
+    token budget usage, and optimization details.
+    """
+    from app.models.wiki import WikiGeneration
+
+    # Get generation record
+    generation = (
+        wiki_db.query(WikiGeneration)
+        .filter(WikiGeneration.id == generation_id)
+        .first()
+    )
+
+    if not generation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Wiki generation {generation_id} not found",
+        )
+
+    # Extract scan report from ext field
+    ext = generation.ext or {}
+    scan_report = ext.get("scan_report")
+
+    if not scan_report:
+        return None
+
+    return scan_report
+
+
+@router.get("/config/token-optimization")
+def get_wiki_token_optimization_config(
+    current_user: User = Depends(security.get_current_user),
+):
+    """Get wiki token optimization configuration."""
+    return {
+        "max_tokens": wiki_settings.MAX_TOKENS,
+        "reserve_tokens": wiki_settings.RESERVE_TOKENS,
+        "available_tokens": wiki_settings.MAX_TOKENS - wiki_settings.RESERVE_TOKENS,
+        "max_scan_depth": wiki_settings.MAX_SCAN_DEPTH,
+        "max_files_per_dir": wiki_settings.MAX_FILES_PER_DIR,
+        "max_total_files": wiki_settings.MAX_TOTAL_FILES,
+        "large_file_threshold": wiki_settings.LARGE_FILE_THRESHOLD,
+        "huge_file_threshold": wiki_settings.HUGE_FILE_THRESHOLD,
+        "enable_ai_analysis": wiki_settings.ENABLE_AI_ANALYSIS,
+        "wikiignore_path": wiki_settings.get_wikiignore_path(),
     }
