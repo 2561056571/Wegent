@@ -4,7 +4,7 @@
 
 'use client';
 
-import { WikiContent as WikiContentType } from '@/types/wiki';
+import { WikiContent as WikiContentType, WikiTocItem } from '@/types/wiki';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -18,6 +18,47 @@ import { DiagramModal } from './DiagramModal';
 import { useTranslation } from '@/hooks/useTranslation';
 import { HeadingIdGenerator, getTextContent } from './tocUtils';
 
+/**
+ * Helper class to match heading text to TOC items for ID lookup.
+ * This ensures rendered headings use the same IDs as the TOC.
+ */
+class TocIdMatcher {
+  private h2Index = 0;
+  private h3Index = 0;
+  private h2Items: WikiTocItem[] = [];
+  private h3Items: WikiTocItem[] = [];
+  private fallbackGenerator = new HeadingIdGenerator();
+
+  constructor(toc: WikiTocItem[]) {
+    this.h2Items = toc.filter((item) => item.level === 2);
+    this.h3Items = toc.filter((item) => item.level === 3);
+  }
+
+  /**
+   * Get the next ID for a heading at the given level.
+   * Uses sequential matching from TOC items for reliability.
+   */
+  getNextId(level: number, text: string): string {
+    if (level === 2) {
+      if (this.h2Index < this.h2Items.length) {
+        return this.h2Items[this.h2Index++].id;
+      }
+    } else if (level === 3) {
+      if (this.h3Index < this.h3Items.length) {
+        return this.h3Items[this.h3Index++].id;
+      }
+    }
+    // Fallback: generate ID if TOC doesn't have enough items
+    return this.fallbackGenerator.generateId(text);
+  }
+
+  reset(): void {
+    this.h2Index = 0;
+    this.h3Index = 0;
+    this.fallbackGenerator = new HeadingIdGenerator();
+  }
+}
+
 interface MarkdownComponentProps extends HTMLAttributes<HTMLElement> {
   node?: unknown;
   className?: string;
@@ -28,6 +69,7 @@ interface WikiContentProps {
   content: WikiContentType | null;
   loading: boolean;
   error: string | null;
+  toc?: WikiTocItem[];
 }
 
 /**
@@ -287,16 +329,17 @@ function CodeBlock({
  * Wiki content rendering component
  * Encapsulates complex ReactMarkdown config and custom components
  */
-export function WikiContent({ content, loading, error }: WikiContentProps) {
+export function WikiContent({ content, loading, error, toc = [] }: WikiContentProps) {
   const { t } = useTranslation('common');
 
-  // Create a stable ID generator that resets when content changes
-  const idGeneratorRef = useRef(new HeadingIdGenerator());
+  // Create a TOC ID matcher that uses TOC-provided IDs for heading elements
+  // This ensures clicking TOC items scrolls to the correct heading
+  const tocMatcherRef = useRef(new TocIdMatcher(toc));
 
-  // Reset ID generator when content changes
+  // Reset matcher when content or TOC changes
   useMemo(() => {
-    idGeneratorRef.current = new HeadingIdGenerator();
-  }, [content?.id]);
+    tocMatcherRef.current = new TocIdMatcher(toc);
+  }, [content?.id, toc]);
 
   if (loading) {
     return (
@@ -449,7 +492,7 @@ export function WikiContent({ content, loading, error }: WikiContentProps) {
                 ),
                 h2: ({ node: _node, children, ...props }: MarkdownComponentProps) => {
                   const text = getTextContent(children);
-                  const id = idGeneratorRef.current.generateId(text);
+                  const id = tocMatcherRef.current.getNextId(2, text);
                   return (
                     <h2
                       id={id}
@@ -464,7 +507,7 @@ export function WikiContent({ content, loading, error }: WikiContentProps) {
                 },
                 h3: ({ node: _node, children, ...props }: MarkdownComponentProps) => {
                   const text = getTextContent(children);
-                  const id = idGeneratorRef.current.generateId(text);
+                  const id = tocMatcherRef.current.getNextId(3, text);
                   return (
                     <h3
                       id={id}
