@@ -30,6 +30,7 @@ from app.schemas.wiki import (
 from app.services.adapters.task_kinds import task_kinds_service
 from app.services.adapters.team_kinds import team_kinds_service
 from app.services.user import user_service
+from app.services.wiki_toc_parser import parse_toc_from_markdown
 
 logger = logging.getLogger(__name__)
 
@@ -621,11 +622,16 @@ class WikiService:
                     (section.type, section.title)
                 ) or existing_by_title.get(section.title)
 
+                # Parse TOC from content and merge into ext
+                toc = parse_toc_from_markdown(section.content)
+                section_ext = dict(section.ext) if section.ext else {}
+                section_ext["toc"] = toc
+
                 if content_item:
                     content_item.type = section.type
                     content_item.title = section.title
                     content_item.content = section.content
-                    content_item.ext = section.ext or None
+                    content_item.ext = section_ext
                     content_item.updated_at = now
                     updated_sections += 1
                 else:
@@ -637,7 +643,7 @@ class WikiService:
                         parent_id=(
                             section.parent_id if section.parent_id is not None else 0
                         ),
-                        ext=section.ext or None,
+                        ext=section_ext,
                         created_at=now,
                         updated_at=now,
                     )

@@ -87,9 +87,17 @@ export interface WikiGenerationsResponse {
   items: WikiGeneration[];
 }
 
+// Table of Contents item for wiki page navigation
+export interface WikiTocItem {
+  id: string; // Anchor ID (slug)
+  text: string; // Heading text
+  level: number; // Heading level (2 or 3)
+}
+
 export interface WikiContentExt {
   version: string;
   authored_by: string;
+  toc?: WikiTocItem[]; // Table of Contents (optional for backward compatibility)
 }
 
 export interface WikiContent {
