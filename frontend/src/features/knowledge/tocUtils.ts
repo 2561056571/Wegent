@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+import type { ReactNode, ReactElement } from 'react'
 import type { WikiContent, WikiTocItem } from '@/types/wiki'
 
 /**
@@ -98,7 +99,7 @@ export function getTocFromContent(content: WikiContent | null): WikiTocItem[] {
  * @param children - React children
  * @returns Plain text string
  */
-export function getTextContent(children: React.ReactNode): string {
+export function getTextContent(children: ReactNode): string {
   if (typeof children === 'string') {
     return children
   }
@@ -108,7 +109,8 @@ export function getTextContent(children: React.ReactNode): string {
   }
 
   if (children && typeof children === 'object' && 'props' in children) {
-    return getTextContent((children as React.ReactElement).props.children)
+    const element = children as ReactElement<{ children?: ReactNode }>
+    return getTextContent(element.props.children)
   }
 
   return ''
