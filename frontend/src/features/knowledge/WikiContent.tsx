@@ -4,18 +4,19 @@
 
 'use client';
 
-import { WikiContent as WikiContentType } from '@/types/wiki';
+import { WikiContent as WikiContentType, WikiTocItem } from '@/types/wiki';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { ReactNode, useState, useCallback, useEffect, useRef } from 'react';
+import { ReactNode, useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type { HTMLAttributes } from 'react';
 import { CheckIcon, ClipboardIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/outline';
 import { DiagramModal } from './DiagramModal';
 import { useTranslation } from '@/hooks/useTranslation';
+import { getTextContent } from './tocUtils';
 
 interface MarkdownComponentProps extends HTMLAttributes<HTMLElement> {
   node?: unknown;
@@ -27,6 +28,7 @@ interface WikiContentProps {
   content: WikiContentType | null;
   loading: boolean;
   error: string | null;
+  toc?: WikiTocItem[];
 }
 
 /**
@@ -283,11 +285,64 @@ function CodeBlock({
 }
 
 /**
+ * Helper class to match heading text with TOC items from backend.
+ * Uses a counter-based approach to handle duplicate headings consistently.
+ */
+class TocIdMatcher {
+  private tocItems: WikiTocItem[];
+  private textCounters: Map<string, number> = new Map();
+
+  constructor(toc: WikiTocItem[]) {
+    this.tocItems = toc;
+  }
+
+  private normalizeText(text: string): string {
+    // Normalize text for comparison: trim and collapse whitespace
+    return text.trim().replace(/\s+/g, ' ');
+  }
+
+  /**
+   * Get the ID for a heading with the given text and level.
+   * Tracks occurrences to match duplicate headings correctly.
+   */
+  getId(text: string, level: number): string | undefined {
+    const normalizedText = this.normalizeText(text);
+    const key = `${level}:${normalizedText}`;
+
+    // Get current occurrence count for this text+level combination
+    const currentCount = this.textCounters.get(key) || 0;
+    this.textCounters.set(key, currentCount + 1);
+
+    // Find matching TOC item by text, level, and occurrence
+    let foundCount = 0;
+    for (const item of this.tocItems) {
+      if (this.normalizeText(item.text) === normalizedText && item.level === level) {
+        if (foundCount === currentCount) {
+          return item.id;
+        }
+        foundCount++;
+      }
+    }
+
+    // Return undefined if no matching TOC item found
+    return undefined;
+  }
+}
+
+/**
  * Wiki content rendering component
  * Encapsulates complex ReactMarkdown config and custom components
  */
-export function WikiContent({ content, loading, error }: WikiContentProps) {
+export function WikiContent({ content, loading, error, toc = [] }: WikiContentProps) {
   const { t } = useTranslation('common');
+
+  // Create a stable TOC ID matcher that uses backend-provided TOC data
+  const tocMatcherRef = useRef<TocIdMatcher>(new TocIdMatcher(toc));
+
+  // Reset TOC matcher when content or TOC changes
+  useMemo(() => {
+    tocMatcherRef.current = new TocIdMatcher(toc);
+  }, [content?.id, toc]);
 
   if (loading) {
     return (
@@ -438,23 +493,37 @@ export function WikiContent({ content, loading, error }: WikiContentProps) {
                     {children}
                   </h1>
                 ),
-                h2: ({ node: _node, children, ...props }: MarkdownComponentProps) => (
-                  <h2
-                    className="text-xl font-bold mt-10 mb-4 pb-2 border-b border-border/30 flex items-center gap-2 group"
-                    style={{ color: 'var(--text-primary)' }}
-                    {...props}
-                  >
-                    <span className="w-1 h-6 bg-primary rounded-full mr-2" />
-                    {children}
-                  </h2>
-                ),
-                h3: ({ node: _node, ...props }: MarkdownComponentProps) => (
-                  <h3
-                    className="text-lg font-semibold mt-8 mb-3 flex items-center gap-2"
-                    style={{ color: 'var(--text-primary)' }}
-                    {...props}
-                  />
-                ),
+                h2: ({ node: _node, children, ...props }: MarkdownComponentProps) => {
+                  const text = getTextContent(children);
+                  // Use backend-provided TOC ID if available
+                  const id = tocMatcherRef.current.getId(text, 2);
+                  return (
+                    <h2
+                      id={id}
+                      className="scroll-mt-20 text-xl font-bold mt-10 mb-4 pb-2 border-b border-border/30 flex items-center gap-2 group"
+                      style={{ color: 'var(--text-primary)' }}
+                      {...props}
+                    >
+                      <span className="w-1 h-6 bg-primary rounded-full mr-2" />
+                      {children}
+                    </h2>
+                  );
+                },
+                h3: ({ node: _node, children, ...props }: MarkdownComponentProps) => {
+                  const text = getTextContent(children);
+                  // Use backend-provided TOC ID if available
+                  const id = tocMatcherRef.current.getId(text, 3);
+                  return (
+                    <h3
+                      id={id}
+                      className="scroll-mt-20 text-lg font-semibold mt-8 mb-3 flex items-center gap-2"
+                      style={{ color: 'var(--text-primary)' }}
+                      {...props}
+                    >
+                      {children}
+                    </h3>
+                  );
+                },
                 h4: ({ node: _node, ...props }: MarkdownComponentProps) => (
                   <h4
                     className="text-base font-semibold mt-6 mb-2"

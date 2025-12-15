@@ -28,3 +28,13 @@ export type { KnowledgeModule } from './KnowledgeModuleNav';
 export { KnowledgeTabs } from './KnowledgeTabs';
 export type { KnowledgeTabType } from './KnowledgeTabs';
 export type { ContentWriteSummary, ContentWrite } from './wikiUtils';
+
+// TOC Navigation exports
+export { WikiTableOfContents, WikiTableOfContentsMobile } from './WikiTableOfContents';
+export { useActiveHeading } from './useActiveHeading';
+export { scrollToHeading, scrollToHeadingInContainer } from './scrollUtils';
+export {
+  getTocFromContent,
+  getTextContent,
+  getH2TocItems,
+} from './tocUtils';

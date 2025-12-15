@@ -693,7 +693,11 @@
     "copied": "Copied!",
     "access_denied_title": "Repository Access Denied",
     "access_denied_description": "The wiki task user does not have access to this repository. Please add the user to the GitLab project or configure a different user.",
-    "no_bound_model_warning": "Wiki generation is not available. The default wiki team does not have a model configured. Please contact administrator."
+    "no_bound_model_warning": "Wiki generation is not available. The default wiki team does not have a model configured. Please contact administrator.",
+    "table_of_contents": "Table of Contents",
+    "no_headings": "No headings",
+    "collapse_toc": "Collapse TOC",
+    "expand_toc": "Expand TOC"
   },
   "shells": {
     "title": "Shell Management",
