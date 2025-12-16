@@ -50,8 +50,8 @@ export function DocumentItem({
   }
 
   const getFileIcon = () => {
-    const ext = document.file_extension.toLowerCase()
-    // Could add more specific icons based on extension
+    // Could add more specific icons based on extension in the future
+    // const ext = document.file_extension.toLowerCase()
     return <FileText className="w-5 h-5 text-primary" />
   }
 
