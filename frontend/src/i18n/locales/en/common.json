@@ -664,6 +664,7 @@
       "personal": "Personal Knowledge",
       "team": "Team Knowledge",
       "documents": "documents",
+      "noTeamHint": "You haven't joined any teams yet. Create or join a team to view team knowledge bases here.",
       "knowledgeBase": {
         "title": "Knowledge Base",
         "create": "Create Knowledge Base",

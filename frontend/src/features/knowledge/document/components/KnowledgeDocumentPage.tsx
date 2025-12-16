@@ -5,7 +5,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Users, User } from 'lucide-react'
+import { Users, User, FolderOpen } from 'lucide-react'
 import { Spinner } from '@/components/ui/spinner'
 import { KnowledgeBaseList } from './KnowledgeBaseList'
 import { useTranslation } from '@/hooks/useTranslation'
@@ -65,29 +65,27 @@ export function KnowledgeDocumentPage() {
 
   return (
     <div className="space-y-4">
-      {/* Tab navigation */}
-      {tabs.length > 1 && (
-        <div className="flex gap-2 border-b border-border pb-2 overflow-x-auto">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`
-                flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium
-                transition-colors whitespace-nowrap
-                ${
-                  activeTab === tab.id
-                    ? 'bg-primary text-white'
-                    : 'text-text-secondary hover:bg-muted hover:text-text-primary'
-                }
-              `}
-            >
-              {tab.icon}
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Tab navigation - always show */}
+      <div className="flex gap-2 border-b border-border pb-2 overflow-x-auto">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`
+              flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium
+              transition-colors whitespace-nowrap
+              ${
+                activeTab === tab.id
+                  ? 'bg-primary text-white'
+                  : 'text-text-secondary hover:bg-muted hover:text-text-primary'
+              }
+            `}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
       {/* Content based on active tab */}
       {activeTab === 'personal' ? (
@@ -98,6 +96,20 @@ export function KnowledgeDocumentPage() {
           groupName={activeTab}
           canManage={true}
         />
+      )}
+
+      {/* Show hint when no groups */}
+      {groups.length === 0 && (
+        <div className="mt-6 p-4 bg-muted rounded-lg">
+          <div className="flex items-start gap-3">
+            <FolderOpen className="w-5 h-5 text-text-muted mt-0.5" />
+            <div>
+              <p className="text-sm text-text-secondary">
+                {t('knowledge.document.noTeamHint')}
+              </p>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -664,6 +664,7 @@
       "personal": "个人知识",
       "team": "团队知识",
       "documents": "个文档",
+      "noTeamHint": "您还没有加入任何团队。创建或加入团队后，可在此查看团队知识库。",
       "knowledgeBase": {
         "title": "知识库",
         "create": "创建知识库",
