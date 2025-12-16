@@ -124,7 +124,7 @@ export function DocumentItem({
                   onClick={handleDelete}
                 >
                   <Trash2 className="w-4 h-4" />
-                  {t('common.delete')}
+                  {t('actions.delete')}
                 </button>
               </div>
             </>

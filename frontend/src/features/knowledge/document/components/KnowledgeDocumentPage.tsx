@@ -65,19 +65,19 @@ export function KnowledgeDocumentPage() {
 
   return (
     <div className="space-y-4">
-      {/* Tab navigation - always show */}
-      <div className="flex gap-2 border-b border-border pb-2 overflow-x-auto">
+      {/* Tab navigation - consistent with KnowledgeTabs style */}
+      <div className="flex items-center gap-1 overflow-x-auto">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`
-              flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium
-              transition-colors whitespace-nowrap
+              flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium
+              transition-colors duration-200 whitespace-nowrap
               ${
                 activeTab === tab.id
-                  ? 'bg-primary text-white'
-                  : 'text-text-secondary hover:bg-muted hover:text-text-primary'
+                  ? 'text-primary bg-primary/10'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-muted'
               }
             `}
           >
