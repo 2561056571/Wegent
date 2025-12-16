@@ -658,6 +658,50 @@
     "tabs": {
       "code": "Code Knowledge",
       "document": "Document Knowledge"
+    },
+    "document": {
+      "title": "Document Knowledge",
+      "personal": "Personal Knowledge",
+      "team": "Team Knowledge",
+      "documents": "documents",
+      "knowledgeBase": {
+        "title": "Knowledge Base",
+        "create": "Create Knowledge Base",
+        "edit": "Edit Knowledge Base",
+        "delete": "Delete Knowledge Base",
+        "name": "Name",
+        "namePlaceholder": "Enter knowledge base name",
+        "nameRequired": "Name is required",
+        "nameTooLong": "Name must be 100 characters or less",
+        "description": "Description",
+        "descriptionPlaceholder": "Enter description (optional)",
+        "documentCount": "Documents",
+        "empty": "No knowledge bases yet",
+        "confirmDelete": "Are you sure you want to delete this knowledge base? This action cannot be undone.",
+        "deleteWarning": "This will also delete {{count}} document(s) in this knowledge base."
+      },
+      "document": {
+        "title": "Documents",
+        "upload": "Upload File",
+        "enable": "Enable",
+        "disable": "Disable",
+        "delete": "Delete",
+        "status": {
+          "enabled": "Enabled",
+          "disabled": "Disabled"
+        },
+        "search": "Search documents",
+        "empty": "No documents yet",
+        "noResults": "No matching documents",
+        "confirmDelete": "Are you sure you want to delete this document?",
+        "dropzone": "Drop file here or click to browse",
+        "supportedTypes": "PDF, Word, PPT, Excel, TXT, MD, Images (max 20MB)",
+        "uploading": "Uploading...",
+        "uploadSuccess": "File uploaded successfully"
+      },
+      "permission": {
+        "noAccess": "You do not have permission to perform this action"
+      }
     }
   },
   "wiki": {

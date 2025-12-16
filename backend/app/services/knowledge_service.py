@@ -1,0 +1,628 @@
+# SPDX-FileCopyrightText: 2025 WeCode, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+Knowledge base and document service for business logic.
+"""
+
+from typing import Optional
+
+from sqlalchemy.orm import Session
+
+from app.models.knowledge import (
+    DocumentStatus,
+    KnowledgeBase,
+    KnowledgeDocument,
+)
+from app.models.namespace import Namespace
+from app.schemas.knowledge import (
+    AccessibleKnowledgeBase,
+    AccessibleKnowledgeResponse,
+    KnowledgeBaseCreate,
+    KnowledgeBaseUpdate,
+    KnowledgeDocumentCreate,
+    KnowledgeDocumentUpdate,
+    ResourceScope,
+    TeamKnowledgeGroup,
+)
+from app.schemas.namespace import GroupRole
+from app.services.group_permission import (
+    check_group_permission,
+    get_effective_role_in_group,
+    get_user_groups,
+)
+
+
+class KnowledgeService:
+    """Service for managing knowledge bases and documents."""
+
+    # ============== Knowledge Base Operations ==============
+
+    @staticmethod
+    def create_knowledge_base(
+        db: Session,
+        user_id: int,
+        data: KnowledgeBaseCreate,
+    ) -> KnowledgeBase:
+        """
+        Create a new knowledge base.
+
+        Args:
+            db: Database session
+            user_id: Creator user ID
+            data: Knowledge base creation data
+
+        Returns:
+            Created KnowledgeBase
+
+        Raises:
+            ValueError: If validation fails or permission denied
+        """
+        # Check permission for team knowledge base
+        if data.namespace != "default":
+            role = get_effective_role_in_group(db, user_id, data.namespace)
+            if role is None:
+                raise ValueError(f"User does not have access to group '{data.namespace}'")
+            if not check_group_permission(db, user_id, data.namespace, GroupRole.Maintainer):
+                raise ValueError("Only Owner or Maintainer can create knowledge base in this group")
+
+        # Check duplicate name
+        existing = (
+            db.query(KnowledgeBase)
+            .filter(
+                KnowledgeBase.name == data.name,
+                KnowledgeBase.user_id == user_id,
+                KnowledgeBase.namespace == data.namespace,
+                KnowledgeBase.is_active == True,
+            )
+            .first()
+        )
+        if existing:
+            raise ValueError(f"Knowledge base with name '{data.name}' already exists")
+
+        knowledge_base = KnowledgeBase(
+            name=data.name,
+            description=data.description or "",
+            user_id=user_id,
+            namespace=data.namespace,
+        )
+        db.add(knowledge_base)
+        db.commit()
+        db.refresh(knowledge_base)
+        return knowledge_base
+
+    @staticmethod
+    def get_knowledge_base(
+        db: Session,
+        knowledge_base_id: int,
+        user_id: int,
+    ) -> Optional[KnowledgeBase]:
+        """
+        Get a knowledge base by ID with permission check.
+
+        Args:
+            db: Database session
+            knowledge_base_id: Knowledge base ID
+            user_id: Requesting user ID
+
+        Returns:
+            KnowledgeBase if found and accessible, None otherwise
+        """
+        kb = (
+            db.query(KnowledgeBase)
+            .filter(
+                KnowledgeBase.id == knowledge_base_id,
+                KnowledgeBase.is_active == True,
+            )
+            .first()
+        )
+
+        if not kb:
+            return None
+
+        # Check access permission
+        if kb.namespace == "default":
+            if kb.user_id != user_id:
+                return None
+        else:
+            role = get_effective_role_in_group(db, user_id, kb.namespace)
+            if role is None:
+                return None
+
+        return kb
+
+    @staticmethod
+    def list_knowledge_bases(
+        db: Session,
+        user_id: int,
+        scope: ResourceScope = ResourceScope.ALL,
+        group_name: Optional[str] = None,
+    ) -> list[KnowledgeBase]:
+        """
+        List knowledge bases based on scope.
+
+        Args:
+            db: Database session
+            user_id: Requesting user ID
+            scope: Resource scope (personal, group, all)
+            group_name: Group name (required when scope is GROUP)
+
+        Returns:
+            List of accessible knowledge bases
+        """
+        if scope == ResourceScope.PERSONAL:
+            return (
+                db.query(KnowledgeBase)
+                .filter(
+                    KnowledgeBase.user_id == user_id,
+                    KnowledgeBase.namespace == "default",
+                    KnowledgeBase.is_active == True,
+                )
+                .order_by(KnowledgeBase.updated_at.desc())
+                .all()
+            )
+
+        elif scope == ResourceScope.GROUP:
+            if not group_name:
+                raise ValueError("group_name is required when scope is GROUP")
+
+            # Check user has access to this group
+            role = get_effective_role_in_group(db, user_id, group_name)
+            if role is None:
+                return []
+
+            return (
+                db.query(KnowledgeBase)
+                .filter(
+                    KnowledgeBase.namespace == group_name,
+                    KnowledgeBase.is_active == True,
+                )
+                .order_by(KnowledgeBase.updated_at.desc())
+                .all()
+            )
+
+        else:  # ALL
+            # Get personal knowledge bases
+            personal = (
+                db.query(KnowledgeBase)
+                .filter(
+                    KnowledgeBase.user_id == user_id,
+                    KnowledgeBase.namespace == "default",
+                    KnowledgeBase.is_active == True,
+                )
+                .all()
+            )
+
+            # Get team knowledge bases from accessible groups
+            accessible_groups = get_user_groups(db, user_id)
+            team = (
+                db.query(KnowledgeBase)
+                .filter(
+                    KnowledgeBase.namespace.in_(accessible_groups),
+                    KnowledgeBase.is_active == True,
+                )
+                .all()
+            ) if accessible_groups else []
+
+            return personal + team
+
+    @staticmethod
+    def update_knowledge_base(
+        db: Session,
+        knowledge_base_id: int,
+        user_id: int,
+        data: KnowledgeBaseUpdate,
+    ) -> Optional[KnowledgeBase]:
+        """
+        Update a knowledge base.
+
+        Args:
+            db: Database session
+            knowledge_base_id: Knowledge base ID
+            user_id: Requesting user ID
+            data: Update data
+
+        Returns:
+            Updated KnowledgeBase if successful, None otherwise
+
+        Raises:
+            ValueError: If validation fails or permission denied
+        """
+        kb = KnowledgeService.get_knowledge_base(db, knowledge_base_id, user_id)
+        if not kb:
+            return None
+
+        # Check permission for team knowledge base
+        if kb.namespace != "default":
+            if not check_group_permission(db, user_id, kb.namespace, GroupRole.Maintainer):
+                raise ValueError("Only Owner or Maintainer can update knowledge base in this group")
+
+        # Check duplicate name if name is being changed
+        if data.name and data.name != kb.name:
+            existing = (
+                db.query(KnowledgeBase)
+                .filter(
+                    KnowledgeBase.name == data.name,
+                    KnowledgeBase.user_id == kb.user_id,
+                    KnowledgeBase.namespace == kb.namespace,
+                    KnowledgeBase.is_active == True,
+                    KnowledgeBase.id != knowledge_base_id,
+                )
+                .first()
+            )
+            if existing:
+                raise ValueError(f"Knowledge base with name '{data.name}' already exists")
+            kb.name = data.name
+
+        if data.description is not None:
+            kb.description = data.description
+
+        db.commit()
+        db.refresh(kb)
+        return kb
+
+    @staticmethod
+    def delete_knowledge_base(
+        db: Session,
+        knowledge_base_id: int,
+        user_id: int,
+    ) -> bool:
+        """
+        Soft delete a knowledge base and its documents.
+
+        Args:
+            db: Database session
+            knowledge_base_id: Knowledge base ID
+            user_id: Requesting user ID
+
+        Returns:
+            True if deleted, False if not found
+
+        Raises:
+            ValueError: If permission denied
+        """
+        kb = KnowledgeService.get_knowledge_base(db, knowledge_base_id, user_id)
+        if not kb:
+            return False
+
+        # Check permission for team knowledge base
+        if kb.namespace != "default":
+            if not check_group_permission(db, user_id, kb.namespace, GroupRole.Maintainer):
+                raise ValueError("Only Owner or Maintainer can delete knowledge base in this group")
+
+        # Soft delete all documents in this knowledge base
+        db.query(KnowledgeDocument).filter(
+            KnowledgeDocument.knowledge_base_id == knowledge_base_id,
+        ).update({"is_active": False})
+
+        # Soft delete the knowledge base
+        kb.is_active = False
+        kb.document_count = 0
+        db.commit()
+        return True
+
+    # ============== Knowledge Document Operations ==============
+
+    @staticmethod
+    def create_document(
+        db: Session,
+        knowledge_base_id: int,
+        user_id: int,
+        data: KnowledgeDocumentCreate,
+    ) -> KnowledgeDocument:
+        """
+        Create a new document in a knowledge base.
+
+        Args:
+            db: Database session
+            knowledge_base_id: Knowledge base ID
+            user_id: Uploader user ID
+            data: Document creation data
+
+        Returns:
+            Created KnowledgeDocument
+
+        Raises:
+            ValueError: If validation fails or permission denied
+        """
+        kb = KnowledgeService.get_knowledge_base(db, knowledge_base_id, user_id)
+        if not kb:
+            raise ValueError("Knowledge base not found or access denied")
+
+        # Check permission for team knowledge base
+        if kb.namespace != "default":
+            if not check_group_permission(db, user_id, kb.namespace, GroupRole.Maintainer):
+                raise ValueError("Only Owner or Maintainer can add documents to this knowledge base")
+
+        document = KnowledgeDocument(
+            knowledge_base_id=knowledge_base_id,
+            attachment_id=data.attachment_id,
+            name=data.name,
+            file_extension=data.file_extension,
+            file_size=data.file_size,
+            user_id=user_id,
+        )
+        db.add(document)
+
+        # Update document count
+        kb.document_count += 1
+        db.commit()
+        db.refresh(document)
+        return document
+
+    @staticmethod
+    def get_document(
+        db: Session,
+        document_id: int,
+        user_id: int,
+    ) -> Optional[KnowledgeDocument]:
+        """
+        Get a document by ID with permission check.
+
+        Args:
+            db: Database session
+            document_id: Document ID
+            user_id: Requesting user ID
+
+        Returns:
+            KnowledgeDocument if found and accessible, None otherwise
+        """
+        doc = (
+            db.query(KnowledgeDocument)
+            .filter(
+                KnowledgeDocument.id == document_id,
+                KnowledgeDocument.is_active == True,
+            )
+            .first()
+        )
+
+        if not doc:
+            return None
+
+        # Check access via knowledge base
+        kb = KnowledgeService.get_knowledge_base(db, doc.knowledge_base_id, user_id)
+        if not kb:
+            return None
+
+        return doc
+
+    @staticmethod
+    def list_documents(
+        db: Session,
+        knowledge_base_id: int,
+        user_id: int,
+    ) -> list[KnowledgeDocument]:
+        """
+        List documents in a knowledge base.
+
+        Args:
+            db: Database session
+            knowledge_base_id: Knowledge base ID
+            user_id: Requesting user ID
+
+        Returns:
+            List of documents
+        """
+        # Check access to knowledge base
+        kb = KnowledgeService.get_knowledge_base(db, knowledge_base_id, user_id)
+        if not kb:
+            return []
+
+        return (
+            db.query(KnowledgeDocument)
+            .filter(
+                KnowledgeDocument.knowledge_base_id == knowledge_base_id,
+                KnowledgeDocument.is_active == True,
+            )
+            .order_by(KnowledgeDocument.created_at.desc())
+            .all()
+        )
+
+    @staticmethod
+    def update_document(
+        db: Session,
+        document_id: int,
+        user_id: int,
+        data: KnowledgeDocumentUpdate,
+    ) -> Optional[KnowledgeDocument]:
+        """
+        Update a document (enable/disable status).
+
+        Args:
+            db: Database session
+            document_id: Document ID
+            user_id: Requesting user ID
+            data: Update data
+
+        Returns:
+            Updated KnowledgeDocument if successful, None otherwise
+
+        Raises:
+            ValueError: If permission denied
+        """
+        doc = KnowledgeService.get_document(db, document_id, user_id)
+        if not doc:
+            return None
+
+        # Check permission for team knowledge base
+        kb = (
+            db.query(KnowledgeBase)
+            .filter(KnowledgeBase.id == doc.knowledge_base_id)
+            .first()
+        )
+        if kb and kb.namespace != "default":
+            if not check_group_permission(db, user_id, kb.namespace, GroupRole.Maintainer):
+                raise ValueError("Only Owner or Maintainer can update documents in this knowledge base")
+
+        if data.status is not None:
+            doc.status = DocumentStatus(data.status.value)
+
+        db.commit()
+        db.refresh(doc)
+        return doc
+
+    @staticmethod
+    def delete_document(
+        db: Session,
+        document_id: int,
+        user_id: int,
+    ) -> bool:
+        """
+        Soft delete a document.
+
+        Args:
+            db: Database session
+            document_id: Document ID
+            user_id: Requesting user ID
+
+        Returns:
+            True if deleted, False if not found
+
+        Raises:
+            ValueError: If permission denied
+        """
+        doc = KnowledgeService.get_document(db, document_id, user_id)
+        if not doc:
+            return False
+
+        # Check permission for team knowledge base
+        kb = (
+            db.query(KnowledgeBase)
+            .filter(KnowledgeBase.id == doc.knowledge_base_id)
+            .first()
+        )
+        if kb and kb.namespace != "default":
+            if not check_group_permission(db, user_id, kb.namespace, GroupRole.Maintainer):
+                raise ValueError("Only Owner or Maintainer can delete documents from this knowledge base")
+
+        # Soft delete document
+        doc.is_active = False
+
+        # Update document count
+        if kb:
+            kb.document_count = max(0, kb.document_count - 1)
+
+        db.commit()
+        return True
+
+    # ============== Accessible Knowledge Query ==============
+
+    @staticmethod
+    def get_accessible_knowledge(
+        db: Session,
+        user_id: int,
+    ) -> AccessibleKnowledgeResponse:
+        """
+        Get all knowledge bases accessible to the user.
+
+        Args:
+            db: Database session
+            user_id: Requesting user ID
+
+        Returns:
+            AccessibleKnowledgeResponse with personal and team knowledge bases
+        """
+        # Get personal knowledge bases
+        personal_kbs = (
+            db.query(KnowledgeBase)
+            .filter(
+                KnowledgeBase.user_id == user_id,
+                KnowledgeBase.namespace == "default",
+                KnowledgeBase.is_active == True,
+            )
+            .order_by(KnowledgeBase.updated_at.desc())
+            .all()
+        )
+
+        personal = [
+            AccessibleKnowledgeBase(
+                id=kb.id,
+                name=kb.name,
+                description=kb.description,
+                document_count=kb.document_count,
+                updated_at=kb.updated_at,
+            )
+            for kb in personal_kbs
+        ]
+
+        # Get team knowledge bases grouped by namespace
+        accessible_groups = get_user_groups(db, user_id)
+        team_groups: list[TeamKnowledgeGroup] = []
+
+        for group_name in accessible_groups:
+            # Get namespace display name
+            namespace = (
+                db.query(Namespace)
+                .filter(
+                    Namespace.name == group_name,
+                    Namespace.is_active == True,
+                )
+                .first()
+            )
+            display_name = namespace.display_name if namespace else None
+
+            # Get knowledge bases in this group
+            group_kbs = (
+                db.query(KnowledgeBase)
+                .filter(
+                    KnowledgeBase.namespace == group_name,
+                    KnowledgeBase.is_active == True,
+                )
+                .order_by(KnowledgeBase.updated_at.desc())
+                .all()
+            )
+
+            if group_kbs:
+                team_groups.append(
+                    TeamKnowledgeGroup(
+                        group_name=group_name,
+                        group_display_name=display_name,
+                        knowledge_bases=[
+                            AccessibleKnowledgeBase(
+                                id=kb.id,
+                                name=kb.name,
+                                description=kb.description,
+                                document_count=kb.document_count,
+                                updated_at=kb.updated_at,
+                            )
+                            for kb in group_kbs
+                        ],
+                    )
+                )
+
+        return AccessibleKnowledgeResponse(personal=personal, team=team_groups)
+
+    @staticmethod
+    def can_manage_knowledge_base(
+        db: Session,
+        knowledge_base_id: int,
+        user_id: int,
+    ) -> bool:
+        """
+        Check if user can manage (create/edit/delete) a knowledge base.
+
+        Args:
+            db: Database session
+            knowledge_base_id: Knowledge base ID
+            user_id: User ID
+
+        Returns:
+            True if user has management permission
+        """
+        kb = (
+            db.query(KnowledgeBase)
+            .filter(
+                KnowledgeBase.id == knowledge_base_id,
+                KnowledgeBase.is_active == True,
+            )
+            .first()
+        )
+
+        if not kb:
+            return False
+
+        if kb.namespace == "default":
+            return kb.user_id == user_id
+        else:
+            return check_group_permission(db, user_id, kb.namespace, GroupRole.Maintainer)
