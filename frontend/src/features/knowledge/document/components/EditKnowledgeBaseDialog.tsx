@@ -112,10 +112,10 @@ export function EditKnowledgeBaseDialog({
               onClick={() => handleOpenChange(false)}
               disabled={loading}
             >
-              {t('common.cancel')}
+              {t('actions.cancel')}
             </Button>
             <Button type="submit" variant="primary" disabled={loading}>
-              {loading ? t('common.saving') : t('common.save')}
+              {loading ? t('actions.saving') : t('actions.save')}
             </Button>
           </DialogFooter>
         </form>

@@ -103,14 +103,14 @@ export function KnowledgeBaseCard({
                     onClick={handleEdit}
                   >
                     <Pencil className="w-4 h-4" />
-                    {t('common.edit')}
+                    {t('actions.edit')}
                   </button>
                   <button
                     className="w-full px-3 py-2 text-sm text-left hover:bg-muted flex items-center gap-2 text-error"
                     onClick={handleDelete}
                   >
                     <Trash2 className="w-4 h-4" />
-                    {t('common.delete')}
+                    {t('actions.delete')}
                   </button>
                 </div>
               </>

@@ -106,10 +106,10 @@ export function CreateKnowledgeBaseDialog({
               onClick={() => handleOpenChange(false)}
               disabled={loading}
             >
-              {t('common.cancel')}
+              {t('actions.cancel')}
             </Button>
             <Button type="submit" variant="primary" disabled={loading}>
-              {loading ? t('common.creating') : t('common.create')}
+              {loading ? t('actions.creating') : t('actions.create')}
             </Button>
           </DialogFooter>
         </form>

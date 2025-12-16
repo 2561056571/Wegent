@@ -126,7 +126,7 @@ export function DocumentList({
         <div className="flex flex-col items-center justify-center py-12 text-text-secondary">
           <p>{error}</p>
           <Button variant="outline" className="mt-4" onClick={refresh}>
-            {t('common.retry')}
+            {t('actions.retry')}
           </Button>
         </div>
       ) : filteredDocuments.length > 0 ? (

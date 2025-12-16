@@ -68,14 +68,14 @@ export function DeleteKnowledgeBaseDialog({
             onClick={() => onOpenChange(false)}
             disabled={loading}
           >
-            {t('common.cancel')}
+            {t('actions.cancel')}
           </Button>
           <Button
             variant="destructive"
             onClick={handleConfirm}
             disabled={loading}
           >
-            {loading ? t('common.deleting') : t('common.delete')}
+            {loading ? t('actions.deleting') : t('actions.delete')}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -12,6 +12,7 @@ import { KnowledgeBaseCard } from './KnowledgeBaseCard'
 import { CreateKnowledgeBaseDialog } from './CreateKnowledgeBaseDialog'
 import { EditKnowledgeBaseDialog } from './EditKnowledgeBaseDialog'
 import { DeleteKnowledgeBaseDialog } from './DeleteKnowledgeBaseDialog'
+import { DocumentList } from './DocumentList'
 import { useKnowledgeBases } from '../hooks/useKnowledgeBases'
 import type { KnowledgeBase, KnowledgeResourceScope } from '@/types/knowledge'
 import { useTranslation } from '@/hooks/useTranslation'
@@ -19,14 +20,12 @@ import { useTranslation } from '@/hooks/useTranslation'
 interface KnowledgeBaseListProps {
   scope?: KnowledgeResourceScope
   groupName?: string
-  onSelectKnowledgeBase?: (kb: KnowledgeBase) => void
   canManage?: boolean
 }
 
 export function KnowledgeBaseList({
   scope = 'personal',
   groupName,
-  onSelectKnowledgeBase,
   canManage = true,
 }: KnowledgeBaseListProps) {
   const { t } = useTranslation()
@@ -38,6 +37,7 @@ export function KnowledgeBaseList({
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [editingKb, setEditingKb] = useState<KnowledgeBase | null>(null)
   const [deletingKb, setDeletingKb] = useState<KnowledgeBase | null>(null)
+  const [selectedKb, setSelectedKb] = useState<KnowledgeBase | null>(null)
 
   const handleCreate = async (data: { name: string; description?: string }) => {
     try {
@@ -72,6 +72,26 @@ export function KnowledgeBaseList({
     }
   }
 
+  const handleSelectKb = (kb: KnowledgeBase) => {
+    setSelectedKb(kb)
+  }
+
+  const handleBack = () => {
+    setSelectedKb(null)
+    refresh()
+  }
+
+  // Show document list if a knowledge base is selected
+  if (selectedKb) {
+    return (
+      <DocumentList
+        knowledgeBase={selectedKb}
+        onBack={handleBack}
+        canManage={canManage}
+      />
+    )
+  }
+
   if (loading && knowledgeBases.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -85,7 +105,7 @@ export function KnowledgeBaseList({
       <div className="flex flex-col items-center justify-center py-12 text-text-secondary">
         <p>{error}</p>
         <Button variant="outline" className="mt-4" onClick={refresh}>
-          {t('common.retry')}
+          {t('actions.retry')}
         </Button>
       </div>
     )
@@ -121,7 +141,7 @@ export function KnowledgeBaseList({
               knowledgeBase={kb}
               onEdit={setEditingKb}
               onDelete={setDeletingKb}
-              onClick={onSelectKnowledgeBase}
+              onClick={handleSelectKb}
               canManage={canManage}
             />
           ))}
