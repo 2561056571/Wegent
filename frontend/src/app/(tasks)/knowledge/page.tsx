@@ -28,7 +28,7 @@ import {
   SearchBox,
   KnowledgeTabs,
   KnowledgeTabType,
-  KnowledgeBaseList,
+  KnowledgeDocumentPage,
 } from '@/features/knowledge';
 
 export default function KnowledgePage() {
@@ -196,7 +196,7 @@ export default function KnowledgePage() {
           )}
 
           {activeTab === 'document' && (
-            <KnowledgeBaseList />
+            <KnowledgeDocumentPage />
           )}
         </div>
       </div>

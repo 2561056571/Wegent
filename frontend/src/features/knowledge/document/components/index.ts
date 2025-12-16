@@ -4,6 +4,7 @@
 
 export { KnowledgeBaseCard } from './KnowledgeBaseCard'
 export { KnowledgeBaseList } from './KnowledgeBaseList'
+export { KnowledgeDocumentPage } from './KnowledgeDocumentPage'
 export { CreateKnowledgeBaseDialog } from './CreateKnowledgeBaseDialog'
 export { EditKnowledgeBaseDialog } from './EditKnowledgeBaseDialog'
 export { DeleteKnowledgeBaseDialog } from './DeleteKnowledgeBaseDialog'
