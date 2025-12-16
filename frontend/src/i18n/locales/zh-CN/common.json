@@ -30,7 +30,8 @@
     "loading": "加载中...",
     "retry": "重试",
     "toggle_theme": "切换主题",
-    "upload": "上传"
+    "upload": "上传",
+    "view": "查看"
   },
   "validation": {
     "required": "此字段为必填项",
@@ -665,9 +666,16 @@
       "team": "团队知识",
       "documents": "个文档",
       "noTeamHint": "您还没有加入任何团队。创建或加入团队后，可在此查看团队知识库。",
+      "noGroupHint": "您还没有加入任何组。创建或加入组后，可在此查看组知识库。",
+      "tabs": {
+        "personal": "个人知识",
+        "group": "组知识",
+        "external": "外部知识库"
+      },
       "knowledgeBase": {
         "title": "知识库",
         "create": "创建知识库",
+        "createDesc": "创建您的第一个知识库",
         "edit": "编辑知识库",
         "delete": "删除知识库",
         "name": "知识库名称",

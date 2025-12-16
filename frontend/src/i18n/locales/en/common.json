@@ -30,7 +30,8 @@
     "loading": "Loading...",
     "retry": "Retry",
     "toggle_theme": "Toggle Theme",
-    "upload": "Upload"
+    "upload": "Upload",
+    "view": "View"
   },
   "validation": {
     "required": "This field is required",
@@ -665,9 +666,16 @@
       "team": "Team Knowledge",
       "documents": "documents",
       "noTeamHint": "You haven't joined any teams yet. Create or join a team to view team knowledge bases here.",
+      "noGroupHint": "You haven't joined any groups yet. Create or join a group to view group knowledge bases here.",
+      "tabs": {
+        "personal": "Personal",
+        "group": "Group",
+        "external": "External"
+      },
       "knowledgeBase": {
         "title": "Knowledge Base",
         "create": "Create Knowledge Base",
+        "createDesc": "Create your first knowledge base",
         "edit": "Edit Knowledge Base",
         "delete": "Delete Knowledge Base",
         "name": "Name",
