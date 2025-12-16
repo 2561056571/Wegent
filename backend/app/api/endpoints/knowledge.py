@@ -179,7 +179,7 @@ def delete_knowledge_base(
     current_user: User = Depends(security.get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Delete a knowledge base (soft delete)."""
+    """Delete a knowledge base and all its documents."""
     try:
         deleted = KnowledgeService.delete_knowledge_base(
             db=db,
@@ -298,7 +298,7 @@ def delete_document(
     current_user: User = Depends(security.get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Delete a document (soft delete)."""
+    """Delete a document from the knowledge base."""
     try:
         deleted = KnowledgeService.delete_document(
             db=db,

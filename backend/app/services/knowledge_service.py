@@ -269,7 +269,7 @@ class KnowledgeService:
         user_id: int,
     ) -> bool:
         """
-        Soft delete a knowledge base and its documents.
+        Physically delete a knowledge base and its documents.
 
         Args:
             db: Database session
@@ -291,14 +291,13 @@ class KnowledgeService:
             if not check_group_permission(db, user_id, kb.namespace, GroupRole.Maintainer):
                 raise ValueError("Only Owner or Maintainer can delete knowledge base in this group")
 
-        # Soft delete all documents in this knowledge base
+        # Physically delete all documents in this knowledge base
         db.query(KnowledgeDocument).filter(
             KnowledgeDocument.knowledge_base_id == knowledge_base_id,
-        ).update({"is_active": False})
+        ).delete()
 
-        # Soft delete the knowledge base
-        kb.is_active = False
-        kb.document_count = 0
+        # Physically delete the knowledge base
+        db.delete(kb)
         db.commit()
         return True
 
@@ -469,7 +468,7 @@ class KnowledgeService:
         user_id: int,
     ) -> bool:
         """
-        Soft delete a document.
+        Physically delete a document.
 
         Args:
             db: Database session
@@ -496,13 +495,12 @@ class KnowledgeService:
             if not check_group_permission(db, user_id, kb.namespace, GroupRole.Maintainer):
                 raise ValueError("Only Owner or Maintainer can delete documents from this knowledge base")
 
-        # Soft delete document
-        doc.is_active = False
-
         # Update document count
         if kb:
             kb.document_count = max(0, kb.document_count - 1)
 
+        # Physically delete document
+        db.delete(doc)
         db.commit()
         return True
 
