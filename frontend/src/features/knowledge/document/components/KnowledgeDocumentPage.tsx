@@ -5,10 +5,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ChevronDown, ChevronRight, Users, User, FolderOpen, Plus } from 'lucide-react'
+import { ChevronDown, ChevronRight, Users, User, FolderOpen, Plus, FileText, Pencil, Trash2, ArrowRight } from 'lucide-react'
 import { Spinner } from '@/components/ui/spinner'
 import { Card } from '@/components/ui/card'
-import { KnowledgeBaseCard } from './KnowledgeBaseCard'
 import { CreateKnowledgeBaseDialog } from './CreateKnowledgeBaseDialog'
 import { EditKnowledgeBaseDialog } from './EditKnowledgeBaseDialog'
 import { DeleteKnowledgeBaseDialog } from './DeleteKnowledgeBaseDialog'
@@ -252,17 +251,17 @@ function TreeSectionComponent({
 
       {/* Section content */}
       {isExpanded && (
-        <div className="p-4 bg-base">
+        <div className="bg-base">
           {loading ? (
             <div className="flex justify-center py-8">
               <Spinner />
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {/* Add knowledge base card */}
+          ) : knowledgeBases.length === 0 ? (
+            // Empty state - show centered add card
+            <div className="flex justify-center py-8">
               <Card
                 padding="sm"
-                className="hover:bg-hover transition-colors cursor-pointer flex flex-col items-center justify-center h-[120px]"
+                className="hover:bg-hover transition-colors cursor-pointer flex flex-col items-center justify-center w-64 h-32"
                 onClick={onCreateKb}
               >
                 <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-2">
@@ -272,22 +271,129 @@ function TreeSectionComponent({
                   {t('knowledge.document.knowledgeBase.create')}
                 </span>
               </Card>
-
-              {/* Knowledge base cards */}
-              {knowledgeBases.map((kb) => (
-                <KnowledgeBaseCard
+            </div>
+          ) : (
+            // Knowledge base list
+            <div>
+              {/* Add button row */}
+              <div className="px-4 py-2 border-b border-border">
+                <button
+                  onClick={onCreateKb}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-primary hover:bg-primary/10 rounded-md transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  {t('knowledge.document.knowledgeBase.create')}
+                </button>
+              </div>
+              {/* Knowledge base items */}
+              {knowledgeBases.map((kb, index) => (
+                <KnowledgeBaseItem
                   key={kb.id}
                   knowledgeBase={kb}
-                  onClick={onSelectKb}
-                  onEdit={onEditKb}
-                  onDelete={onDeleteKb}
-                  canManage={true}
+                  onClick={() => onSelectKb(kb)}
+                  onEdit={() => onEditKb(kb)}
+                  onDelete={() => onDeleteKb(kb)}
+                  showBorder={index < knowledgeBases.length - 1}
                 />
               ))}
             </div>
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// Knowledge base list item component
+interface KnowledgeBaseItemProps {
+  knowledgeBase: KnowledgeBase
+  onClick: () => void
+  onEdit: () => void
+  onDelete: () => void
+  showBorder?: boolean
+}
+
+function KnowledgeBaseItem({
+  knowledgeBase,
+  onClick,
+  onEdit,
+  onDelete,
+  showBorder = true,
+}: KnowledgeBaseItemProps) {
+  const { t } = useTranslation()
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString()
+  }
+
+  return (
+    <div
+      className={`flex items-center gap-4 px-4 py-3 hover:bg-surface transition-colors cursor-pointer group ${showBorder ? 'border-b border-border' : ''}`}
+      onClick={onClick}
+    >
+      {/* Icon */}
+      <div className="p-2 bg-primary/10 rounded-lg flex-shrink-0">
+        <FolderOpen className="w-4 h-4 text-primary" />
+      </div>
+
+      {/* Name and description */}
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium text-text-primary truncate">
+          {knowledgeBase.name}
+        </div>
+        {knowledgeBase.description && (
+          <div className="text-xs text-text-muted truncate">
+            {knowledgeBase.description}
+          </div>
+        )}
+      </div>
+
+      {/* Document count */}
+      <div className="flex items-center gap-1 text-xs text-text-muted flex-shrink-0">
+        <FileText className="w-3 h-3" />
+        <span>{knowledgeBase.document_count}</span>
+      </div>
+
+      {/* Update date */}
+      <div className="w-24 flex-shrink-0 text-right">
+        <span className="text-xs text-text-muted">
+          {formatDate(knowledgeBase.updated_at)}
+        </span>
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex items-center gap-1 flex-shrink-0">
+        <button
+          className="p-1.5 rounded-md text-text-muted hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
+          onClick={(e) => {
+            e.stopPropagation()
+            onEdit()
+          }}
+          title={t('actions.edit')}
+        >
+          <Pencil className="w-3.5 h-3.5" />
+        </button>
+        <button
+          className="p-1.5 rounded-md text-text-muted hover:text-error hover:bg-error/10 transition-colors opacity-0 group-hover:opacity-100"
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+          title={t('actions.delete')}
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+        <button
+          className="p-1.5 rounded-md text-text-muted hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
+          onClick={(e) => {
+            e.stopPropagation()
+            onClick()
+          }}
+          title={t('actions.view')}
+        >
+          <ArrowRight className="w-3.5 h-3.5" />
+        </button>
+      </div>
     </div>
   )
 }
