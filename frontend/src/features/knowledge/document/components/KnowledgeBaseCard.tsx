@@ -4,7 +4,6 @@
 
 'use client'
 
-import { useState } from 'react'
 import { FolderOpen, Pencil, Trash2, FileText, ArrowRight } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import type { KnowledgeBase } from '@/types/knowledge'
