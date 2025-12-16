@@ -7,7 +7,6 @@
 import { useState, useMemo } from 'react'
 import { ArrowLeft, Upload, FileText, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { DocumentItem } from './DocumentItem'
 import { DocumentUpload } from './DocumentUpload'
@@ -76,23 +75,37 @@ export function DocumentList({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="max-w-4xl mx-auto space-y-4">
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         {onBack && (
           <Button variant="ghost" size="icon" onClick={onBack}>
             <ArrowLeft className="w-5 h-5" />
           </Button>
         )}
-        <div className="flex-1">
-          <h2 className="text-lg font-semibold text-text-primary">
+        <div className="flex-1 min-w-0">
+          <h2 className="text-lg font-semibold text-text-primary truncate">
             {knowledgeBase.name}
           </h2>
           {knowledgeBase.description && (
-            <p className="text-sm text-text-secondary">
+            <p className="text-sm text-text-secondary truncate">
               {knowledgeBase.description}
             </p>
           )}
+        </div>
+      </div>
+
+      {/* Search and upload bar */}
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+          <input
+            type="text"
+            className="w-full h-9 pl-9 pr-3 text-sm bg-surface border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
+            placeholder={t('knowledge.document.document.search')}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </div>
         {canManage && (
           <Button
@@ -104,17 +117,6 @@ export function DocumentList({
             {t('knowledge.document.document.upload')}
           </Button>
         )}
-      </div>
-
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-        <Input
-          className="pl-10"
-          placeholder={t('knowledge.document.document.search')}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
       </div>
 
       {/* Document List */}
@@ -130,14 +132,15 @@ export function DocumentList({
           </Button>
         </div>
       ) : filteredDocuments.length > 0 ? (
-        <div className="space-y-1">
-          {filteredDocuments.map((doc) => (
+        <div className="border border-border rounded-lg overflow-hidden">
+          {filteredDocuments.map((doc, index) => (
             <DocumentItem
               key={doc.id}
               document={doc}
               onToggleStatus={toggleStatus}
               onDelete={setDeletingDoc}
               canManage={canManage}
+              showBorder={index < filteredDocuments.length - 1}
             />
           ))}
         </div>

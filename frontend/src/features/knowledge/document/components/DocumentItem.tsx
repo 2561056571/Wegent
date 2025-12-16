@@ -4,9 +4,7 @@
 
 'use client'
 
-import { FileText, MoreVertical, Trash2, ToggleLeft, ToggleRight } from 'lucide-react'
-import { useState } from 'react'
-import { Button } from '@/components/ui/button'
+import { FileText, Trash2, ToggleLeft, ToggleRight } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import type { KnowledgeDocument } from '@/types/knowledge'
 import { useTranslation } from '@/hooks/useTranslation'
@@ -16,6 +14,7 @@ interface DocumentItemProps {
   onToggleStatus?: (doc: KnowledgeDocument) => void
   onDelete?: (doc: KnowledgeDocument) => void
   canManage?: boolean
+  showBorder?: boolean
 }
 
 export function DocumentItem({
@@ -23,9 +22,9 @@ export function DocumentItem({
   onToggleStatus,
   onDelete,
   canManage = true,
+  showBorder = true,
 }: DocumentItemProps) {
   const { t } = useTranslation()
-  const [showMenu, setShowMenu] = useState(false)
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`
@@ -39,96 +38,84 @@ export function DocumentItem({
 
   const handleToggleStatus = (e: React.MouseEvent) => {
     e.stopPropagation()
-    setShowMenu(false)
     onToggleStatus?.(document)
   }
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation()
-    setShowMenu(false)
     onDelete?.(document)
   }
 
-  const getFileIcon = () => {
-    // Could add more specific icons based on extension in the future
-    // const ext = document.file_extension.toLowerCase()
-    return <FileText className="w-5 h-5 text-primary" />
-  }
-
   return (
-    <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-surface transition-colors group">
-      <div className="p-2 bg-primary/10 rounded-lg">
-        {getFileIcon()}
+    <div className={`flex items-center gap-4 px-4 py-3 bg-base hover:bg-surface transition-colors group ${showBorder ? 'border-b border-border' : ''}`}>
+      {/* File icon */}
+      <div className="p-2 bg-primary/10 rounded-lg flex-shrink-0">
+        <FileText className="w-4 h-4 text-primary" />
       </div>
+
+      {/* File name - takes most space */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-text-primary truncate">
-            {document.name}
-          </span>
-          <Badge
-            variant={document.status === 'enabled' ? 'success' : 'secondary'}
-            size="sm"
-          >
-            {document.status === 'enabled'
-              ? t('knowledge.document.document.status.enabled')
-              : t('knowledge.document.document.status.disabled')}
-          </Badge>
-        </div>
-        <div className="flex items-center gap-3 mt-1 text-xs text-text-muted">
-          <span>{document.file_extension.toUpperCase()}</span>
-          <span>{formatFileSize(document.file_size)}</span>
-          <span>{formatDate(document.created_at)}</span>
-        </div>
+        <span className="text-sm font-medium text-text-primary truncate block">
+          {document.name}
+        </span>
       </div>
+
+      {/* Type */}
+      <div className="w-16 flex-shrink-0 text-center">
+        <span className="text-xs text-text-muted uppercase">
+          {document.file_extension}
+        </span>
+      </div>
+
+      {/* Size */}
+      <div className="w-20 flex-shrink-0 text-right">
+        <span className="text-xs text-text-muted">
+          {formatFileSize(document.file_size)}
+        </span>
+      </div>
+
+      {/* Upload date */}
+      <div className="w-24 flex-shrink-0 text-right">
+        <span className="text-xs text-text-muted">
+          {formatDate(document.created_at)}
+        </span>
+      </div>
+
+      {/* Status badge */}
+      <div className="w-16 flex-shrink-0 text-center">
+        <Badge
+          variant={document.status === 'enabled' ? 'success' : 'secondary'}
+          size="sm"
+        >
+          {document.status === 'enabled'
+            ? t('knowledge.document.document.status.enabled')
+            : t('knowledge.document.document.status.disabled')}
+        </Badge>
+      </div>
+
+      {/* Action buttons */}
       {canManage && (
-        <div className="relative">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={(e) => {
-              e.stopPropagation()
-              setShowMenu(!showMenu)
-            }}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button
+            className="p-1.5 rounded-md text-text-muted hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
+            onClick={handleToggleStatus}
+            title={document.status === 'enabled'
+              ? t('knowledge.document.document.disable')
+              : t('knowledge.document.document.enable')}
           >
-            <MoreVertical className="w-4 h-4" />
-          </Button>
-          {showMenu && (
-            <>
-              <div
-                className="fixed inset-0 z-40"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setShowMenu(false)
-                }}
-              />
-              <div className="absolute right-0 top-full mt-1 bg-surface border border-border rounded-lg shadow-lg py-1 z-50 min-w-[140px]">
-                <button
-                  className="w-full px-3 py-2 text-sm text-left hover:bg-muted flex items-center gap-2"
-                  onClick={handleToggleStatus}
-                >
-                  {document.status === 'enabled' ? (
-                    <>
-                      <ToggleLeft className="w-4 h-4" />
-                      {t('knowledge.document.document.disable')}
-                    </>
-                  ) : (
-                    <>
-                      <ToggleRight className="w-4 h-4" />
-                      {t('knowledge.document.document.enable')}
-                    </>
-                  )}
-                </button>
-                <button
-                  className="w-full px-3 py-2 text-sm text-left hover:bg-muted flex items-center gap-2 text-error"
-                  onClick={handleDelete}
-                >
-                  <Trash2 className="w-4 h-4" />
-                  {t('actions.delete')}
-                </button>
-              </div>
-            </>
-          )}
+            {document.status === 'enabled' ? (
+              <ToggleLeft className="w-4 h-4" />
+            ) : (
+              <ToggleRight className="w-4 h-4" />
+            )}
+          </button>
+          <button
+            className="p-1.5 rounded-md text-text-muted hover:text-error hover:bg-error/10 transition-colors opacity-0 group-hover:opacity-100"
+            onClick={handleDelete}
+            title={t('actions.delete')}
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
         </div>
       )}
     </div>
