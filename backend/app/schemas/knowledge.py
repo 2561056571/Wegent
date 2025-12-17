@@ -59,6 +59,22 @@ class KnowledgeBaseResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    @classmethod
+    def from_kind(cls, kind):
+        """Create response from Kind object"""
+        spec = kind.json.get("spec", {})
+        return cls(
+            id=kind.id,
+            name=spec.get("name", ""),
+            description=spec.get("description"),
+            user_id=kind.user_id,
+            namespace=kind.namespace,
+            document_count=spec.get("document_count", 0),
+            is_active=kind.is_active,
+            created_at=kind.created_at,
+            updated_at=kind.updated_at,
+        )
+
     class Config:
         from_attributes = True
 

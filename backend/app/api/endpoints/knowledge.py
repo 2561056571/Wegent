@@ -83,7 +83,7 @@ def list_knowledge_bases(
 
     return KnowledgeBaseListResponse(
         total=len(knowledge_bases),
-        items=[KnowledgeBaseResponse.model_validate(kb) for kb in knowledge_bases],
+        items=[KnowledgeBaseResponse.from_kind(kb) for kb in knowledge_bases],
     )
 
 
@@ -121,12 +121,18 @@ def create_knowledge_base(
     - **namespace=<group_name>**: Team knowledge base (requires Maintainer+ permission)
     """
     try:
-        knowledge_base = KnowledgeService.create_knowledge_base(
+        kb_id = KnowledgeService.create_knowledge_base(
             db=db,
             user_id=current_user.id,
             data=data,
         )
-        return KnowledgeBaseResponse.model_validate(knowledge_base)
+        # Fetch the created knowledge base
+        knowledge_base = KnowledgeService.get_knowledge_base(
+            db=db,
+            knowledge_base_id=kb_id,
+            user_id=current_user.id,
+        )
+        return KnowledgeBaseResponse.from_kind(knowledge_base)
     except IntegrityError:
         db.rollback()
         raise HTTPException(
@@ -159,7 +165,7 @@ def get_knowledge_base(
             detail="Knowledge base not found or access denied",
         )
 
-    return KnowledgeBaseResponse.model_validate(knowledge_base)
+    return KnowledgeBaseResponse.from_kind(knowledge_base)
 
 
 @router.put("/{knowledge_base_id}", response_model=KnowledgeBaseResponse)
@@ -184,7 +190,7 @@ def update_knowledge_base(
                 detail="Knowledge base not found or access denied",
             )
 
-        return KnowledgeBaseResponse.model_validate(knowledge_base)
+        return KnowledgeBaseResponse.from_kind(knowledge_base)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
