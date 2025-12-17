@@ -109,7 +109,7 @@ class KnowledgeDocumentResponse(BaseModel):
     """Schema for knowledge document response."""
 
     id: int
-    knowledge_base_id: int
+    kind_id: int
     attachment_id: Optional[int] = None
     name: str
     file_extension: str

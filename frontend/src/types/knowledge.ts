@@ -42,7 +42,7 @@ export interface KnowledgeBaseListResponse {
 // Knowledge Document types
 export interface KnowledgeDocument {
   id: number
-  knowledge_base_id: number
+  kind_id: number
   attachment_id: number | null
   name: string
   file_extension: string
