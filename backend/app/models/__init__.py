@@ -5,6 +5,7 @@
 """
 Models package
 """
+from app.models.api_key import APIKey
 from app.models.kind import Kind
 from app.models.knowledge import KnowledgeDocument
 from app.models.namespace import Namespace
@@ -27,5 +28,6 @@ __all__ = [
     "SystemConfig",
     "Namespace",
     "NamespaceMember",
+    "APIKey",
     "KnowledgeDocument",
 ]

@@ -16,6 +16,8 @@ import {
   ShareIcon,
   CodeBracketIcon,
   LinkSlashIcon,
+  SparklesIcon,
+  ClipboardDocumentIcon,
 } from '@heroicons/react/24/outline';
 import { Bot, Team } from '@/types/api';
 import { fetchTeamsList, deleteTeam, shareTeam, checkTeamRunningTasks } from '../services/teams';
@@ -25,6 +27,7 @@ import TeamEditDialog from './TeamEditDialog';
 import BotList from './BotList';
 import UnifiedAddButton from '@/components/common/UnifiedAddButton';
 import TeamShareModal from './TeamShareModal';
+import TeamCreationWizard from './wizard/TeamCreationWizard';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useToast } from '@/hooks/use-toast';
 import { sortTeamsByUpdatedAt } from '@/utils/team';
@@ -42,6 +45,7 @@ import {
 } from '@/components/ui/dialog';
 import { ResourceListItem } from '@/components/common/ResourceListItem';
 import { TeamIconDisplay } from './teams/TeamIconDisplay';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface TeamListProps {
   scope?: 'personal' | 'group' | 'all';
@@ -72,6 +76,7 @@ export default function TeamList({ scope = 'personal', groupName }: TeamListProp
   const [botListVisible, setBotListVisible] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [modeFilter, setModeFilter] = useState<ModeFilter>('all');
+  const [wizardOpen, setWizardOpen] = useState(false);
   const router = useRouter();
 
   const setTeamsSorted = useCallback<React.Dispatch<React.SetStateAction<Team[]>>>(
@@ -157,10 +162,50 @@ export default function TeamList({ scope = 'personal', groupName }: TeamListProp
     setEditDialogOpen(true);
   };
 
+  const handleCopyTeamName = async (team: Team) => {
+    const teamNameString = `${team.namespace || 'default'}#${team.name}`;
+    try {
+      await navigator.clipboard.writeText(teamNameString);
+      toast({
+        title: t('teams.copy_name_success'),
+        description: teamNameString,
+      });
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: t('teams.copy_name_failed'),
+      });
+    }
+  };
+
   const handleCloseEditDialog = () => {
     setEditDialogOpen(false);
     setEditingTeamId(null);
     setPrefillTeam(null);
+  };
+
+  const handleWizardSuccess = async (teamId: number, teamName: string) => {
+    toast({
+      title: t('wizard.create_agent'),
+      description: `${teamName}`,
+    });
+    // Reload teams list
+    const teamsData = await fetchTeamsList(scope, groupName);
+    setTeamsSorted(teamsData);
+    setWizardOpen(false);
+  };
+
+  const handleOpenWizard = () => {
+    // Validation for group scope: must have groupName
+    if (scope === 'group' && !groupName) {
+      toast({
+        variant: 'destructive',
+        title: t('teams.group_required_title'),
+        description: t('teams.group_required_message'),
+      });
+      return;
+    }
+    setWizardOpen(true);
   };
 
   // Get target page based on team's bind_mode and current filter
@@ -388,7 +433,13 @@ export default function TeamList({ scope = 'personal', groupName }: TeamListProp
                         <ResourceListItem
                           name={team.name}
                           description={team.description}
-                          icon={<TeamIconDisplay iconId={team.icon} size="md" className="text-primary" />}
+                          icon={
+                            <TeamIconDisplay
+                              iconId={team.icon}
+                              size="md"
+                              className="text-primary"
+                            />
+                          }
                           tags={[
                             ...(team.workflow?.mode
                               ? [
@@ -484,6 +535,15 @@ export default function TeamList({ scope = 'personal', groupName }: TeamListProp
                           >
                             <DocumentDuplicateIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleCopyTeamName(team)}
+                            title={t('teams.copy_name')}
+                            className="h-7 w-7 sm:h-8 sm:w-8"
+                          >
+                            <ClipboardDocumentIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                          </Button>
                           {shouldShowShare(team) && (
                             <Button
                               variant="ghost"
@@ -527,6 +587,19 @@ export default function TeamList({ scope = 'personal', groupName }: TeamListProp
                   <UnifiedAddButton onClick={handleCreateTeam}>
                     {t('teams.new_team')}
                   </UnifiedAddButton>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="primary" onClick={handleOpenWizard} className="gap-2">
+                          <SparklesIcon className="w-4 h-4" />
+                          {t('wizard.wizard_button')}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{t('wizard.wizard_button_tooltip')}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                   <UnifiedAddButton
                     variant="outline"
                     onClick={() => setBotListVisible(true)}
@@ -709,6 +782,15 @@ export default function TeamList({ scope = 'personal', groupName }: TeamListProp
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Team Creation Wizard */}
+      <TeamCreationWizard
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onSuccess={handleWizardSuccess}
+        scope={scope === 'all' ? undefined : scope}
+        groupName={groupName}
+      />
       {/* Error prompt unified with antd message, no local rendering */}
     </>
   );
