@@ -687,11 +687,14 @@
         "documentCount": "文档数量",
         "empty": "暂无知识库",
         "confirmDelete": "确定要删除这个知识库吗？删除后无法恢复。",
-        "deleteWarning": "这将同时删除该知识库中的 {{count}} 个文档。"
+        "deleteWarning": "这将同时删除该知识库中的 {{count}} 个文档。",
+        "search": "搜索知识库...",
+        "noResults": "没有匹配的知识库"
       },
       "document": {
         "title": "文档",
         "upload": "上传文件",
+        "edit": "编辑文档",
         "enable": "启用",
         "disable": "停用",
         "delete": "删除",
@@ -699,14 +702,36 @@
           "enabled": "已启用",
           "disabled": "已停用"
         },
+        "columns": {
+          "name": "名称",
+          "type": "类型",
+          "size": "大小",
+          "date": "创建时间",
+          "status": "状态",
+          "actions": "操作"
+        },
         "search": "搜索文档",
         "empty": "暂无文档",
         "noResults": "没有匹配的文档",
+        "filter": {
+          "all": "全部状态",
+          "enabled": "已启用",
+          "disabled": "已停用"
+        },
         "confirmDelete": "确定要删除这个文档吗？",
+        "nameRequired": "请输入文档名称",
+        "namePlaceholder": "输入文档名称",
+        "updateFailed": "更新文档失败",
         "dropzone": "拖放文件到此处或点击浏览",
         "supportedTypes": "支持 PDF、Word、PPT、Excel、TXT、MD、图片（最大 20MB）",
         "uploading": "上传中...",
-        "uploadSuccess": "文件上传成功"
+        "uploadSuccess": "文件上传成功",
+        "batch": {
+          "selected": "已选择 {{count}} 项",
+          "enable": "批量启用",
+          "disable": "批量停用",
+          "delete": "批量删除"
+        }
       },
       "permission": {
         "noAccess": "您没有操作权限"

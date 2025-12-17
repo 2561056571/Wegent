@@ -115,6 +115,51 @@ export async function deleteDocument(documentId: number): Promise<void> {
   return apiClient.delete(`/knowledge-documents/${documentId}`)
 }
 
+// ============== Batch Document Operations ==============
+
+/**
+ * Batch operation result type
+ */
+export interface BatchOperationResult {
+  success_count: number
+  failed_count: number
+  failed_ids: number[]
+  message: string
+}
+
+/**
+ * Batch delete multiple documents
+ */
+export async function batchDeleteDocuments(
+  documentIds: number[]
+): Promise<BatchOperationResult> {
+  return apiClient.post<BatchOperationResult>('/knowledge-documents/batch/delete', {
+    document_ids: documentIds,
+  })
+}
+
+/**
+ * Batch enable multiple documents
+ */
+export async function batchEnableDocuments(
+  documentIds: number[]
+): Promise<BatchOperationResult> {
+  return apiClient.post<BatchOperationResult>('/knowledge-documents/batch/enable', {
+    document_ids: documentIds,
+  })
+}
+
+/**
+ * Batch disable multiple documents
+ */
+export async function batchDisableDocuments(
+  documentIds: number[]
+): Promise<BatchOperationResult> {
+  return apiClient.post<BatchOperationResult>('/knowledge-documents/batch/disable', {
+    document_ids: documentIds,
+  })
+}
+
 // ============== Accessible Knowledge API ==============
 
 /**

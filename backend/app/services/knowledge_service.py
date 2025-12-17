@@ -19,6 +19,7 @@ from app.models.namespace import Namespace
 from app.schemas.knowledge import (
     AccessibleKnowledgeBase,
     AccessibleKnowledgeResponse,
+    BatchOperationResult,
     KnowledgeBaseCreate,
     KnowledgeBaseUpdate,
     KnowledgeDocumentCreate,
@@ -454,6 +455,9 @@ class KnowledgeService:
             if not check_group_permission(db, user_id, kb.namespace, GroupRole.Maintainer):
                 raise ValueError("Only Owner or Maintainer can update documents in this knowledge base")
 
+        if data.name is not None:
+            doc.name = data.name
+
         if data.status is not None:
             doc.status = DocumentStatus(data.status.value)
 
@@ -624,3 +628,124 @@ class KnowledgeService:
             return kb.user_id == user_id
         else:
             return check_group_permission(db, user_id, kb.namespace, GroupRole.Maintainer)
+
+    # ============== Batch Document Operations ==============
+
+    @staticmethod
+    def batch_delete_documents(
+        db: Session,
+        document_ids: list[int],
+        user_id: int,
+    ) -> BatchOperationResult:
+        """
+        Batch delete multiple documents.
+
+        Args:
+            db: Database session
+            document_ids: List of document IDs to delete
+            user_id: Requesting user ID
+
+        Returns:
+            BatchOperationResult with success/failure counts
+        """
+        success_count = 0
+        failed_ids = []
+
+        for doc_id in document_ids:
+            try:
+                deleted = KnowledgeService.delete_document(db, doc_id, user_id)
+                if deleted:
+                    success_count += 1
+                else:
+                    failed_ids.append(doc_id)
+            except (ValueError, Exception):
+                failed_ids.append(doc_id)
+
+        return BatchOperationResult(
+            success_count=success_count,
+            failed_count=len(failed_ids),
+            failed_ids=failed_ids,
+            message=f"Successfully deleted {success_count} documents, {len(failed_ids)} failed",
+        )
+
+    @staticmethod
+    def batch_enable_documents(
+        db: Session,
+        document_ids: list[int],
+        user_id: int,
+    ) -> BatchOperationResult:
+        """
+        Batch enable multiple documents.
+
+        Args:
+            db: Database session
+            document_ids: List of document IDs to enable
+            user_id: Requesting user ID
+
+        Returns:
+            BatchOperationResult with success/failure counts
+        """
+        from app.schemas.knowledge import DocumentStatus as SchemaDocumentStatus
+        from app.schemas.knowledge import KnowledgeDocumentUpdate
+
+        success_count = 0
+        failed_ids = []
+
+        for doc_id in document_ids:
+            try:
+                update_data = KnowledgeDocumentUpdate(status=SchemaDocumentStatus.ENABLED)
+                doc = KnowledgeService.update_document(db, doc_id, user_id, update_data)
+                if doc:
+                    success_count += 1
+                else:
+                    failed_ids.append(doc_id)
+            except (ValueError, Exception):
+                failed_ids.append(doc_id)
+
+        return BatchOperationResult(
+            success_count=success_count,
+            failed_count=len(failed_ids),
+            failed_ids=failed_ids,
+            message=f"Successfully enabled {success_count} documents, {len(failed_ids)} failed",
+        )
+
+    @staticmethod
+    def batch_disable_documents(
+        db: Session,
+        document_ids: list[int],
+        user_id: int,
+    ) -> BatchOperationResult:
+        """
+        Batch disable multiple documents.
+
+        Args:
+            db: Database session
+            document_ids: List of document IDs to disable
+            user_id: Requesting user ID
+
+        Returns:
+            BatchOperationResult with success/failure counts
+        """
+        from app.schemas.knowledge import DocumentStatus as SchemaDocumentStatus
+        from app.schemas.knowledge import KnowledgeDocumentUpdate
+
+        success_count = 0
+        failed_ids = []
+
+        for doc_id in document_ids:
+            try:
+                update_data = KnowledgeDocumentUpdate(status=SchemaDocumentStatus.DISABLED)
+                doc = KnowledgeService.update_document(db, doc_id, user_id, update_data)
+                if doc:
+                    success_count += 1
+                else:
+                    failed_ids.append(doc_id)
+            except (ValueError, Exception):
+                failed_ids.append(doc_id)
+
+        return BatchOperationResult(
+            success_count=success_count,
+            failed_count=len(failed_ids),
+            failed_ids=failed_ids,
+            message=f"Successfully disabled {success_count} documents, {len(failed_ids)} failed",
+        )

@@ -62,6 +62,7 @@ export interface KnowledgeDocumentCreate {
 }
 
 export interface KnowledgeDocumentUpdate {
+  name?: string
   status?: DocumentStatus
 }
 

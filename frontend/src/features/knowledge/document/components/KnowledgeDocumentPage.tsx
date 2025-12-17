@@ -4,8 +4,8 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
-import { ChevronDown, ChevronRight, Users, User, FolderOpen, Plus, FileText, Pencil, Trash2, ArrowRight, Globe } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { Users, User, Plus, FileText, Pencil, Trash2, ArrowRight, Globe, ArrowLeft, Search } from 'lucide-react'
 import { Spinner } from '@/components/ui/spinner'
 import { Card } from '@/components/ui/card'
 import { CreateKnowledgeBaseDialog } from './CreateKnowledgeBaseDialog'
@@ -59,6 +59,9 @@ export function KnowledgeDocumentPage() {
   const [editingKb, setEditingKb] = useState<KnowledgeBase | null>(null)
   const [deletingKb, setDeletingKb] = useState<KnowledgeBase | null>(null)
 
+  // Refresh key for group knowledge bases
+  const [groupRefreshKey, setGroupRefreshKey] = useState(0)
+
   // Personal knowledge bases
   const personalKb = useKnowledgeBases({ scope: 'personal' })
 
@@ -90,8 +93,13 @@ export function KnowledgeDocumentPage() {
         namespace: createForGroup || 'default',
       })
       setShowCreateDialog(false)
+      // Refresh the appropriate list based on whether it's a group or personal knowledge base
+      if (createForGroup) {
+        setGroupRefreshKey((prev) => prev + 1)
+      } else {
+        personalKb.refresh()
+      }
       setCreateForGroup(null)
-      personalKb.refresh()
     } catch {
       // Error handled by hook
     }
@@ -132,9 +140,9 @@ export function KnowledgeDocumentPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4">
-      {/* Tab navigation */}
-      <div className="flex items-center gap-1 border-b border-border">
+    <div className="space-y-4">
+      {/* Tab navigation - left aligned */}
+      <div className="flex items-center gap-1">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id
           return (
@@ -143,13 +151,13 @@ export function KnowledgeDocumentPage() {
               onClick={() => !tab.disabled && setActiveTab(tab.id)}
               disabled={tab.disabled}
               className={`
-                relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors duration-200
+                relative flex items-center gap-2 px-4 py-2 text-sm font-medium whitespace-nowrap rounded-md transition-colors duration-200
                 ${
                   isActive
-                    ? 'text-primary border-b-2 border-primary -mb-px'
+                    ? 'text-primary bg-primary/10'
                     : tab.disabled
                       ? 'text-text-muted cursor-not-allowed'
-                      : 'text-text-secondary hover:text-text-primary'
+                      : 'text-text-secondary hover:text-text-primary hover:bg-muted'
                 }
               `}
             >
@@ -166,9 +174,11 @@ export function KnowledgeDocumentPage() {
       </div>
 
       {/* Tab content */}
-      <div className="pt-2">
+      <div>
         {activeTab === 'personal' && (
           <PersonalKnowledgeContent
+            knowledgeBases={personalKb.knowledgeBases}
+            loading={personalKb.loading}
             onSelectKb={setSelectedKb}
             onEditKb={setEditingKb}
             onDeleteKb={setDeletingKb}
@@ -180,6 +190,7 @@ export function KnowledgeDocumentPage() {
           <GroupKnowledgeContent
             groups={groups}
             loadingGroups={loadingGroups}
+            refreshKey={groupRefreshKey}
             onSelectKb={setSelectedKb}
             onEditKb={setEditingKb}
             onDeleteKb={setDeletingKb}
@@ -227,6 +238,8 @@ export function KnowledgeDocumentPage() {
 
 // Personal knowledge content component
 interface PersonalKnowledgeContentProps {
+  knowledgeBases: KnowledgeBase[]
+  loading: boolean
   onSelectKb: (kb: KnowledgeBase) => void
   onEditKb: (kb: KnowledgeBase) => void
   onDeleteKb: (kb: KnowledgeBase) => void
@@ -234,13 +247,25 @@ interface PersonalKnowledgeContentProps {
 }
 
 function PersonalKnowledgeContent({
+  knowledgeBases,
+  loading,
   onSelectKb,
   onEditKb,
   onDeleteKb,
   onCreateKb,
 }: PersonalKnowledgeContentProps) {
   const { t } = useTranslation()
-  const { knowledgeBases, loading } = useKnowledgeBases({ scope: 'personal' })
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const filteredKnowledgeBases = useMemo(() => {
+    if (!searchQuery.trim()) return knowledgeBases
+    const query = searchQuery.toLowerCase()
+    return knowledgeBases.filter(
+      (kb) =>
+        kb.name.toLowerCase().includes(query) ||
+        kb.description?.toLowerCase().includes(query)
+    )
+  }, [knowledgeBases, searchQuery])
 
   if (loading) {
     return (
@@ -252,7 +277,7 @@ function PersonalKnowledgeContent({
 
   if (knowledgeBases.length === 0) {
     return (
-      <div className="flex justify-center py-12">
+      <div className="flex flex-col items-center justify-center py-16">
         <Card
           padding="lg"
           className="hover:bg-hover transition-colors cursor-pointer flex flex-col items-center justify-center w-64 h-48"
@@ -273,28 +298,55 @@ function PersonalKnowledgeContent({
   }
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
-      {/* Add button row */}
-      <div className="px-4 py-2 bg-surface border-b border-border">
-        <button
-          onClick={onCreateKb}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm text-primary hover:bg-primary/10 rounded-md transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          {t('knowledge.document.knowledgeBase.create')}
-        </button>
+    <div className="flex flex-col items-center">
+      {/* Search bar */}
+      <div className="mb-4 w-full max-w-4xl">
+        <div className="relative w-full max-w-md mx-auto">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+          <input
+            type="text"
+            className="w-full h-9 pl-9 pr-3 text-sm bg-surface border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
+            placeholder={t('knowledge.document.knowledgeBase.search')}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
       </div>
-      {/* Knowledge base items */}
-      {knowledgeBases.map((kb, index) => (
-        <KnowledgeBaseItem
-          key={kb.id}
-          knowledgeBase={kb}
-          onClick={() => onSelectKb(kb)}
-          onEdit={() => onEditKb(kb)}
-          onDelete={() => onDeleteKb(kb)}
-          showBorder={index < knowledgeBases.length - 1}
-        />
-      ))}
+
+      <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {/* Add knowledge base card */}
+        {!searchQuery && (
+          <Card
+            padding="sm"
+            className="hover:bg-hover transition-colors cursor-pointer flex flex-col items-center justify-center h-[140px]"
+            onClick={onCreateKb}
+          >
+            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+              <Plus className="w-6 h-6 text-primary" />
+            </div>
+            <h3 className="font-medium text-sm">{t('knowledge.document.knowledgeBase.create')}</h3>
+          </Card>
+        )}
+
+        {/* Knowledge base cards */}
+        {filteredKnowledgeBases.map((kb) => (
+          <KnowledgeBaseCard
+            key={kb.id}
+            knowledgeBase={kb}
+            onClick={() => onSelectKb(kb)}
+            onEdit={() => onEditKb(kb)}
+            onDelete={() => onDeleteKb(kb)}
+          />
+        ))}
+      </div>
+
+      {/* No results message */}
+      {searchQuery && filteredKnowledgeBases.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-12 text-text-secondary">
+          <FileText className="w-12 h-12 mb-4 opacity-50" />
+          <p>{t('knowledge.document.knowledgeBase.noResults')}</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -303,6 +355,7 @@ function PersonalKnowledgeContent({
 interface GroupKnowledgeContentProps {
   groups: Group[]
   loadingGroups: boolean
+  refreshKey: number
   onSelectKb: (kb: KnowledgeBase) => void
   onEditKb: (kb: KnowledgeBase) => void
   onDeleteKb: (kb: KnowledgeBase) => void
@@ -312,32 +365,14 @@ interface GroupKnowledgeContentProps {
 function GroupKnowledgeContent({
   groups,
   loadingGroups,
+  refreshKey,
   onSelectKb,
   onEditKb,
   onDeleteKb,
   onCreateKb,
 }: GroupKnowledgeContentProps) {
   const { t } = useTranslation()
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
-
-  // Auto expand first group
-  useEffect(() => {
-    if (groups.length > 0 && expandedGroups.size === 0) {
-      setExpandedGroups(new Set([groups[0].name]))
-    }
-  }, [groups, expandedGroups.size])
-
-  const toggleGroup = (groupName: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev)
-      if (next.has(groupName)) {
-        next.delete(groupName)
-      } else {
-        next.add(groupName)
-      }
-      return next
-    })
-  }
+  const [selectedGroup, setSelectedGroup] = useState<Group | null>(null)
 
   if (loadingGroups) {
     return (
@@ -356,114 +391,208 @@ function GroupKnowledgeContent({
     )
   }
 
+  // Show knowledge bases for selected group
+  if (selectedGroup) {
+    return (
+      <GroupKnowledgeBaseList
+        group={selectedGroup}
+        refreshKey={refreshKey}
+        onBack={() => setSelectedGroup(null)}
+        onSelectKb={onSelectKb}
+        onEditKb={onEditKb}
+        onDeleteKb={onDeleteKb}
+        onCreateKb={() => onCreateKb(selectedGroup.name)}
+      />
+    )
+  }
+
+  // Show group cards grid - centered
   return (
-    <div className="space-y-3">
-      {groups.map((group) => (
-        <GroupSection
-          key={group.name}
-          group={group}
-          isExpanded={expandedGroups.has(group.name)}
-          onToggle={() => toggleGroup(group.name)}
-          onSelectKb={onSelectKb}
-          onEditKb={onEditKb}
-          onDeleteKb={onDeleteKb}
-          onCreateKb={() => onCreateKb(group.name)}
-        />
-      ))}
+    <div className="flex flex-col items-center">
+      <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {groups.map((group) => (
+          <GroupCard
+            key={group.name}
+            group={group}
+            onClick={() => setSelectedGroup(group)}
+          />
+        ))}
+      </div>
     </div>
   )
 }
 
-// Group section component
-interface GroupSectionProps {
+// Group card component
+interface GroupCardProps {
   group: Group
-  isExpanded: boolean
-  onToggle: () => void
+  onClick: () => void
+}
+
+function GroupCard({ group, onClick }: GroupCardProps) {
+  return (
+    <Card
+      padding="sm"
+      className="hover:bg-hover transition-colors cursor-pointer h-[140px] flex flex-col group"
+      onClick={onClick}
+    >
+      {/* Header with icon and name */}
+      <div className="flex items-center gap-3 mb-2">
+        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+          <Users className="w-5 h-5 text-primary" />
+        </div>
+        <h3 className="font-medium text-sm line-clamp-2 flex-1">
+          {group.display_name || group.name}
+        </h3>
+      </div>
+
+      {/* Description */}
+      <div className="text-xs text-text-muted flex-1 min-h-0">
+        {group.description && <p className="line-clamp-2">{group.description}</p>}
+      </div>
+
+      {/* Bottom section - member count */}
+      <div className="flex items-center justify-between mt-auto pt-2 flex-shrink-0">
+        <span className="text-xs text-text-muted flex items-center gap-1">
+          <Users className="w-3 h-3" />
+          {group.member_count || 0}
+        </span>
+        <ArrowRight className="w-4 h-4 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
+    </Card>
+  )
+}
+
+// Group knowledge base list component
+interface GroupKnowledgeBaseListProps {
+  group: Group
+  refreshKey: number
+  onBack: () => void
   onSelectKb: (kb: KnowledgeBase) => void
   onEditKb: (kb: KnowledgeBase) => void
   onDeleteKb: (kb: KnowledgeBase) => void
   onCreateKb: () => void
 }
 
-function GroupSection({
+function GroupKnowledgeBaseList({
   group,
-  isExpanded,
-  onToggle,
+  refreshKey,
+  onBack,
   onSelectKb,
   onEditKb,
   onDeleteKb,
   onCreateKb,
-}: GroupSectionProps) {
+}: GroupKnowledgeBaseListProps) {
   const { t } = useTranslation()
-  const { knowledgeBases, loading } = useKnowledgeBases({
+  const { knowledgeBases, loading, refresh } = useKnowledgeBases({
     scope: 'group',
     groupName: group.name,
   })
+  const [searchQuery, setSearchQuery] = useState('')
+
+  // Refresh when refreshKey changes
+  useEffect(() => {
+    if (refreshKey > 0) {
+      refresh()
+    }
+  }, [refreshKey, refresh])
+
+  const filteredKnowledgeBases = useMemo(() => {
+    if (!searchQuery.trim()) return knowledgeBases
+    const query = searchQuery.toLowerCase()
+    return knowledgeBases.filter(
+      (kb) =>
+        kb.name.toLowerCase().includes(query) ||
+        kb.description?.toLowerCase().includes(query)
+    )
+  }, [knowledgeBases, searchQuery])
+
+  const groupDisplayName = group.display_name || group.name || 'Unknown Group'
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
-      {/* Group header */}
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center gap-2 px-4 py-3 bg-surface hover:bg-muted transition-colors"
-      >
-        {isExpanded ? (
-          <ChevronDown className="w-4 h-4 text-text-muted" />
-        ) : (
-          <ChevronRight className="w-4 h-4 text-text-muted" />
-        )}
-        <Users className="w-4 h-4 text-text-secondary" />
-        <span className="font-medium text-sm text-text-primary">
-          {group.display_name || group.name}
-        </span>
-        <span className="text-xs text-text-muted ml-1">({knowledgeBases.length})</span>
-      </button>
+    <div>
+      {/* Header with back button and group name - left aligned */}
+      <div className="flex items-center gap-3 mb-4">
+        <button
+          onClick={onBack}
+          className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <Users className="w-5 h-5 text-primary flex-shrink-0" />
+        <h2 className="font-medium text-base text-text-primary">{groupDisplayName}</h2>
+      </div>
 
-      {/* Group content */}
-      {isExpanded && (
-        <div className="bg-base">
-          {loading ? (
-            <div className="flex justify-center py-8">
-              <Spinner />
+      {/* Content - centered */}
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <Spinner />
+        </div>
+      ) : knowledgeBases.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16">
+          <Card
+            padding="lg"
+            className="hover:bg-hover transition-colors cursor-pointer flex flex-col items-center justify-center w-64 h-48"
+            onClick={onCreateKb}
+          >
+            <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+              <Plus className="w-8 h-8 text-primary" />
             </div>
-          ) : knowledgeBases.length === 0 ? (
-            <div className="flex justify-center py-8">
+            <h3 className="font-medium text-base mb-2 text-text-primary">
+              {t('knowledge.document.knowledgeBase.create')}
+            </h3>
+            <p className="text-sm text-text-muted text-center">
+              {t('knowledge.document.knowledgeBase.createDesc')}
+            </p>
+          </Card>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center">
+          {/* Search bar */}
+          <div className="mb-4 w-full max-w-4xl">
+            <div className="relative w-full max-w-md mx-auto">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+              <input
+                type="text"
+                className="w-full h-9 pl-9 pr-3 text-sm bg-surface border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
+                placeholder={t('knowledge.document.knowledgeBase.search')}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {/* Add knowledge base card */}
+            {!searchQuery && (
               <Card
                 padding="sm"
-                className="hover:bg-hover transition-colors cursor-pointer flex flex-col items-center justify-center w-64 h-32"
+                className="hover:bg-hover transition-colors cursor-pointer flex flex-col items-center justify-center h-[140px]"
                 onClick={onCreateKb}
               >
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-2">
-                  <Plus className="w-5 h-5 text-primary" />
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+                  <Plus className="w-6 h-6 text-primary" />
                 </div>
-                <span className="text-sm font-medium text-text-primary">
-                  {t('knowledge.document.knowledgeBase.create')}
-                </span>
+                <h3 className="font-medium text-sm">{t('knowledge.document.knowledgeBase.create')}</h3>
               </Card>
-            </div>
-          ) : (
-            <div>
-              {/* Add button row */}
-              <div className="px-4 py-2 border-b border-border">
-                <button
-                  onClick={onCreateKb}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-primary hover:bg-primary/10 rounded-md transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  {t('knowledge.document.knowledgeBase.create')}
-                </button>
-              </div>
-              {/* Knowledge base items */}
-              {knowledgeBases.map((kb, index) => (
-                <KnowledgeBaseItem
-                  key={kb.id}
-                  knowledgeBase={kb}
-                  onClick={() => onSelectKb(kb)}
-                  onEdit={() => onEditKb(kb)}
-                  onDelete={() => onDeleteKb(kb)}
-                  showBorder={index < knowledgeBases.length - 1}
-                />
-              ))}
+            )}
+
+            {/* Knowledge base cards */}
+            {filteredKnowledgeBases.map((kb) => (
+              <KnowledgeBaseCard
+                key={kb.id}
+                knowledgeBase={kb}
+                onClick={() => onSelectKb(kb)}
+                onEdit={() => onEditKb(kb)}
+                onDelete={() => onDeleteKb(kb)}
+              />
+            ))}
+          </div>
+
+          {/* No results message */}
+          {searchQuery && filteredKnowledgeBases.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-12 text-text-secondary">
+              <FileText className="w-12 h-12 mb-4 opacity-50" />
+              <p>{t('knowledge.document.knowledgeBase.noResults')}</p>
             </div>
           )}
         </div>
@@ -472,96 +601,83 @@ function GroupSection({
   )
 }
 
-// Knowledge base list item component
-interface KnowledgeBaseItemProps {
+// Knowledge base card component (grid layout)
+interface KnowledgeBaseCardProps {
   knowledgeBase: KnowledgeBase
   onClick: () => void
   onEdit: () => void
   onDelete: () => void
-  showBorder?: boolean
 }
 
-function KnowledgeBaseItem({
+function KnowledgeBaseCard({
   knowledgeBase,
   onClick,
   onEdit,
   onDelete,
-  showBorder = true,
-}: KnowledgeBaseItemProps) {
+}: KnowledgeBaseCardProps) {
   const { t } = useTranslation()
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString()
-  }
-
   return (
-    <div
-      className={`flex items-center gap-4 px-4 py-3 hover:bg-surface transition-colors cursor-pointer group ${showBorder ? 'border-b border-border' : ''}`}
+    <Card
+      padding="sm"
+      className="hover:bg-hover transition-colors cursor-pointer h-[140px] flex flex-col group"
       onClick={onClick}
     >
-      {/* Icon */}
-      <div className="p-2 bg-primary/10 rounded-lg flex-shrink-0">
-        <FolderOpen className="w-4 h-4 text-primary" />
+      {/* Header with name */}
+      <div className="flex items-start pt-1 mb-2 flex-shrink-0">
+        <h3 className="font-medium text-sm leading-relaxed line-clamp-2 flex-1">
+          <span className="font-semibold">{knowledgeBase.name}</span>
+        </h3>
       </div>
 
-      {/* Name and description */}
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-text-primary truncate">
-          {knowledgeBase.name}
-        </div>
+      {/* Description */}
+      <div className="text-xs text-text-muted flex-1 min-h-0">
         {knowledgeBase.description && (
-          <div className="text-xs text-text-muted truncate">
-            {knowledgeBase.description}
-          </div>
+          <p className="line-clamp-2">{knowledgeBase.description}</p>
         )}
       </div>
 
-      {/* Document count */}
-      <div className="flex items-center gap-1 text-xs text-text-muted flex-shrink-0">
-        <FileText className="w-3 h-3" />
-        <span>{knowledgeBase.document_count}</span>
-      </div>
-
-      {/* Update date */}
-      <div className="w-24 flex-shrink-0 text-right">
-        <span className="text-xs text-text-muted">
-          {formatDate(knowledgeBase.updated_at)}
+      {/* Bottom section - document count on left, actions on right */}
+      <div className="flex items-center justify-between mt-auto pt-2 flex-shrink-0">
+        {/* Document count */}
+        <span className="text-xs text-text-muted flex items-center gap-1">
+          <FileText className="w-3 h-3" />
+          {knowledgeBase.document_count}
         </span>
+        {/* Action icons */}
+        <div className="flex items-center gap-1">
+          <button
+            className="p-1.5 rounded-md text-text-muted hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
+            onClick={(e) => {
+              e.stopPropagation()
+              onEdit()
+            }}
+            title={t('actions.edit')}
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+          <button
+            className="p-1.5 rounded-md text-text-muted hover:text-error hover:bg-error/10 transition-colors opacity-0 group-hover:opacity-100"
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete()
+            }}
+            title={t('actions.delete')}
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+          <button
+            className="p-1.5 rounded-md text-text-muted hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
+            onClick={(e) => {
+              e.stopPropagation()
+              onClick()
+            }}
+            title={t('actions.view')}
+          >
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
       </div>
-
-      {/* Action buttons */}
-      <div className="flex items-center gap-1 flex-shrink-0">
-        <button
-          className="p-1.5 rounded-md text-text-muted hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
-          onClick={(e) => {
-            e.stopPropagation()
-            onEdit()
-          }}
-          title={t('actions.edit')}
-        >
-          <Pencil className="w-3.5 h-3.5" />
-        </button>
-        <button
-          className="p-1.5 rounded-md text-text-muted hover:text-error hover:bg-error/10 transition-colors opacity-0 group-hover:opacity-100"
-          onClick={(e) => {
-            e.stopPropagation()
-            onDelete()
-          }}
-          title={t('actions.delete')}
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
-        <button
-          className="p-1.5 rounded-md text-text-muted hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
-          onClick={(e) => {
-            e.stopPropagation()
-            onClick()
-          }}
-          title={t('actions.view')}
-        >
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
-      </div>
-    </div>
+    </Card>
   )
 }

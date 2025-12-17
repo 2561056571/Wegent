@@ -18,6 +18,8 @@ from app.core import security
 from app.models.user import User
 from app.schemas.knowledge import (
     AccessibleKnowledgeResponse,
+    BatchDocumentIds,
+    BatchOperationResult,
     KnowledgeBaseCreate,
     KnowledgeBaseListResponse,
     KnowledgeBaseResponse,
@@ -82,6 +84,23 @@ def list_knowledge_bases(
     return KnowledgeBaseListResponse(
         total=len(knowledge_bases),
         items=[KnowledgeBaseResponse.model_validate(kb) for kb in knowledge_bases],
+    )
+
+
+@router.get("/accessible", response_model=AccessibleKnowledgeResponse)
+def get_accessible_knowledge(
+    current_user: User = Depends(security.get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get all knowledge bases accessible to the current user.
+
+    Returns both personal and team knowledge bases organized by group.
+    This endpoint is designed for AI chat integration.
+    """
+    return KnowledgeService.get_accessible_knowledge(
+        db=db,
+        user_id=current_user.id,
     )
 
 
@@ -291,7 +310,6 @@ def update_document(
             detail=str(e),
         )
 
-
 @document_router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_document(
     document_id: int,
@@ -320,21 +338,61 @@ def delete_document(
         )
 
 
-# ============== Accessible Knowledge Endpoint ==============
+# ============== Batch Document Operations ==============
 
 
-@router.get("/accessible", response_model=AccessibleKnowledgeResponse)
-def get_accessible_knowledge(
+@document_router.post("/batch/delete", response_model=BatchOperationResult)
+def batch_delete_documents(
+    data: BatchDocumentIds,
     current_user: User = Depends(security.get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Get all knowledge bases accessible to the current user.
+    Batch delete multiple documents.
 
-    Returns both personal and team knowledge bases organized by group.
-    This endpoint is designed for AI chat integration.
+    Deletes all specified documents that the user has permission to delete.
+    Returns a summary of successful and failed operations.
     """
-    return KnowledgeService.get_accessible_knowledge(
+    return KnowledgeService.batch_delete_documents(
         db=db,
+        document_ids=data.document_ids,
+        user_id=current_user.id,
+    )
+
+
+@document_router.post("/batch/enable", response_model=BatchOperationResult)
+def batch_enable_documents(
+    data: BatchDocumentIds,
+    current_user: User = Depends(security.get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Batch enable multiple documents.
+
+    Enables all specified documents that the user has permission to update.
+    Returns a summary of successful and failed operations.
+    """
+    return KnowledgeService.batch_enable_documents(
+        db=db,
+        document_ids=data.document_ids,
+        user_id=current_user.id,
+    )
+
+
+@document_router.post("/batch/disable", response_model=BatchOperationResult)
+def batch_disable_documents(
+    data: BatchDocumentIds,
+    current_user: User = Depends(security.get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Batch disable multiple documents.
+
+    Disables all specified documents that the user has permission to update.
+    Returns a summary of successful and failed operations.
+    """
+    return KnowledgeService.batch_disable_documents(
+        db=db,
+        document_ids=data.document_ids,
         user_id=current_user.id,
     )
