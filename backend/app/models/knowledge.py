@@ -41,20 +41,20 @@ class KnowledgeDocument(Base):
     Knowledge document model for storing document metadata.
 
     Links to subtask_attachments table for actual file storage.
-    Note: knowledge_base_id now references kinds.id (Kind='KnowledgeBase')
+    Note: kind_id references kinds.id (Kind='KnowledgeBase')
+    Note: attachment_id references subtask_attachments.id but without FK constraint
+          (referential integrity is managed at the application layer)
     """
 
     __tablename__ = "knowledge_documents"
 
     id = Column(Integer, primary_key=True, index=True)
-    kind_id = Column(
-        Integer, ForeignKey("kinds.id", ondelete="CASCADE"), nullable=False
-    )
-    attachment_id = Column(
-        Integer,
-        ForeignKey("subtask_attachments.id", ondelete="SET NULL"),
-        nullable=True,
-    )
+    # References kinds.id (Kind='KnowledgeBase') but without FK constraint
+    # Referential integrity is managed at the application layer
+    kind_id = Column(Integer, nullable=False, index=True)
+    # References subtask_attachments.id but without FK constraint
+    # Referential integrity is managed at the application layer
+    attachment_id = Column(Integer, nullable=True)
     name = Column(String(255), nullable=False)
     file_extension = Column(String(50), nullable=False)
     file_size = Column(BigInteger, nullable=False, default=0)

@@ -4,14 +4,14 @@
 
 """Add knowledge_documents table
 
-Revision ID: i9j0k1l2m3n4
-Revises: h8i9j0k1l2m3
+Revision ID: j0k1l2m3n4o5
+Revises: i9j0k1l2m3n4
 Create Date: 2025-12-16 10:00:00.000000+08:00
 
 This migration creates:
 1. knowledge_documents table for storing document references
-   - References kinds.id for knowledge base (Kind='KnowledgeBase')
-   - References subtask_attachments.id for file storage
+   - kind_id references kinds.id (Kind='KnowledgeBase') - no FK constraint, managed at application layer
+   - attachment_id references subtask_attachments.id - no FK constraint, managed at application layer
 """
 from typing import Sequence, Union
 
@@ -19,8 +19,8 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision: str = "i9j0k1l2m3n4"
-down_revision: Union[str, None] = "h8i9j0k1l2m3"
+revision: str = "j0k1l2m3n4o5"
+down_revision: Union[str, None] = "i9j0k1l2m3n4"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -29,10 +29,13 @@ def upgrade() -> None:
     """Create knowledge_documents table."""
 
     # Create knowledge_documents table
+    # Note: No foreign key constraints - referential integrity is managed at the application layer
     op.create_table(
         "knowledge_documents",
         sa.Column("id", sa.Integer(), nullable=False, autoincrement=True),
+        # References kinds.id (Kind='KnowledgeBase') - no FK constraint
         sa.Column("kind_id", sa.Integer(), nullable=False),
+        # References subtask_attachments.id - no FK constraint
         sa.Column("attachment_id", sa.Integer(), nullable=True),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("file_extension", sa.String(50), nullable=False),
@@ -48,17 +51,6 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")),
         sa.PrimaryKeyConstraint("id"),
-        sa.ForeignKeyConstraint(
-            ["kind_id"],
-            ["kinds.id"],
-            name="fk_knowledge_documents_kind_id",
-            ondelete="CASCADE",
-        ),
-        sa.ForeignKeyConstraint(
-            ["attachment_id"],
-            ["subtask_attachments.id"],
-            ondelete="SET NULL",
-        ),
     )
 
     # Create indexes for knowledge_documents
