@@ -46,6 +46,10 @@ export function DocumentList({
     batchDisable,
   } = useDocuments({ knowledgeBaseId: knowledgeBase.id })
 
+  // Only show error on page for initial load failures (when documents list is empty)
+  // Operation errors are shown via toast notifications
+  const showLoadError = error && documents.length === 0
+
   const [showUpload, setShowUpload] = useState(false)
   const [editingDoc, setEditingDoc] = useState<KnowledgeDocument | null>(null)
   const [deletingDoc, setDeletingDoc] = useState<KnowledgeDocument | null>(null)
@@ -290,7 +294,7 @@ export function DocumentList({
         <div className="flex items-center justify-center py-12">
           <Spinner />
         </div>
-      ) : error ? (
+      ) : showLoadError ? (
         <div className="flex flex-col items-center justify-center py-12 text-text-secondary">
           <p>{error}</p>
           <Button variant="outline" className="mt-4" onClick={refresh}>

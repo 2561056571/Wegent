@@ -22,6 +22,7 @@ import type {
   KnowledgeDocumentCreate,
   KnowledgeDocumentUpdate,
 } from '@/types/knowledge'
+import { toast } from '@/hooks/use-toast'
 
 interface UseDocumentsOptions {
   knowledgeBaseId: number | null
@@ -67,7 +68,7 @@ export function useDocuments(options: UseDocumentsOptions) {
         return created
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to create document'
-        setError(message)
+        toast({ title: message, variant: 'destructive' })
         throw err
       } finally {
         setLoading(false)
@@ -87,7 +88,7 @@ export function useDocuments(options: UseDocumentsOptions) {
       return updated
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update document'
-      setError(message)
+      toast({ title: message, variant: 'destructive' })
       throw err
     } finally {
       setLoading(false)
@@ -102,7 +103,7 @@ export function useDocuments(options: UseDocumentsOptions) {
       setDocuments((prev) => prev.filter((doc) => doc.id !== id))
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to delete document'
-      setError(message)
+      toast({ title: message, variant: 'destructive' })
       throw err
     } finally {
       setLoading(false)
@@ -129,7 +130,7 @@ export function useDocuments(options: UseDocumentsOptions) {
         return result
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to batch delete documents'
-        setError(message)
+        toast({ title: message, variant: 'destructive' })
         throw err
       } finally {
         setLoading(false)
@@ -155,7 +156,7 @@ export function useDocuments(options: UseDocumentsOptions) {
         return result
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to batch enable documents'
-        setError(message)
+        toast({ title: message, variant: 'destructive' })
         throw err
       } finally {
         setLoading(false)
@@ -181,7 +182,7 @@ export function useDocuments(options: UseDocumentsOptions) {
         return result
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to batch disable documents'
-        setError(message)
+        toast({ title: message, variant: 'destructive' })
         throw err
       } finally {
         setLoading(false)

@@ -131,9 +131,15 @@ class Settings(BaseSettings):
     ATTACHMENT_S3_REGION: str = "us-east-1"
     ATTACHMENT_S3_USE_SSL: bool = True
 
+    OTEL_ENABLED: bool = False
     # Web search configuration
     WEB_SEARCH_ENABLED: bool = False  # Enable/disable web search feature
     WEB_SEARCH_ENGINES: str = "{}"  # JSON configuration for search API adapter
+
+    # Wizard configuration
+    # The name of the public model to use for wizard AI features (follow-up questions, prompt generation)
+    # If not set or empty, wizard will try to find any available model (user's first, then public)
+    WIZARD_MODEL_NAME: str = ""
 
     # MCP (Model Context Protocol) configuration for Chat Shell
     # Enable/disable MCP tools in Chat Shell mode

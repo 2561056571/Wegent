@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Knowledge base and document service for business logic.
+Knowledge base and document service using kinds table.
 """
 
 from typing import Optional
@@ -12,9 +12,9 @@ from sqlalchemy.orm import Session
 
 from app.models.knowledge import (
     DocumentStatus,
-    KnowledgeBase,
     KnowledgeDocument,
 )
+from app.models.kind import Kind
 from app.models.namespace import Namespace
 from app.schemas.knowledge import (
     AccessibleKnowledgeBase,
@@ -27,16 +27,19 @@ from app.schemas.knowledge import (
     ResourceScope,
     TeamKnowledgeGroup,
 )
+from app.schemas.kind import KnowledgeBase as KnowledgeBaseCRD
+from app.schemas.kind import KnowledgeBaseSpec, ObjectMeta
 from app.schemas.namespace import GroupRole
 from app.services.group_permission import (
     check_group_permission,
     get_effective_role_in_group,
     get_user_groups,
 )
+from app.services.kind_factory import KindServiceFactory
 
 
 class KnowledgeService:
-    """Service for managing knowledge bases and documents."""
+    """Service for managing knowledge bases and documents using kinds table."""
 
     # ============== Knowledge Base Operations ==============
 
@@ -45,7 +48,7 @@ class KnowledgeService:
         db: Session,
         user_id: int,
         data: KnowledgeBaseCreate,
-    ) -> KnowledgeBase:
+    ) -> int:
         """
         Create a new knowledge base.
 
@@ -55,7 +58,7 @@ class KnowledgeService:
             data: Knowledge base creation data
 
         Returns:
-            Created KnowledgeBase
+            Created KnowledgeBase ID
 
         Raises:
             ValueError: If validation fails or permission denied
@@ -70,35 +73,47 @@ class KnowledgeService:
 
         # Check duplicate name
         existing = (
-            db.query(KnowledgeBase)
+            db.query(Kind)
             .filter(
-                KnowledgeBase.name == data.name,
-                KnowledgeBase.user_id == user_id,
-                KnowledgeBase.namespace == data.namespace,
-                KnowledgeBase.is_active == True,
+                Kind.kind == "KnowledgeBase",
+                Kind.user_id == user_id,
+                Kind.namespace == data.namespace,
+                Kind.is_active == True,
             )
-            .first()
+            .all()
         )
-        if existing:
-            raise ValueError(f"Knowledge base with name '{data.name}' already exists")
 
-        knowledge_base = KnowledgeBase(
-            name=data.name,
-            description=data.description or "",
-            user_id=user_id,
-            namespace=data.namespace,
+        for kb in existing:
+            kb_spec = kb.json.get("spec", {})
+            if kb_spec.get("name") == data.name:
+                raise ValueError(f"Knowledge base with name '{data.name}' already exists")
+
+        # Build CRD structure
+        kb_crd = KnowledgeBaseCRD(
+            apiVersion="agent.wecode.io/v1",
+            kind="KnowledgeBase",
+            metadata=ObjectMeta(
+                name=f"kb-{user_id}-{data.namespace}-{data.name}",  # Generate unique name
+                namespace=data.namespace,
+            ),
+            spec=KnowledgeBaseSpec(
+                name=data.name,
+                description=data.description or "",
+                document_count=0,
+            ),
         )
-        db.add(knowledge_base)
-        db.commit()
-        db.refresh(knowledge_base)
-        return knowledge_base
+
+        # Use KindServiceFactory to create
+        kind_service = KindServiceFactory.get_service("KnowledgeBase")
+        kb_id = kind_service.create_resource(user_id, kb_crd.model_dump())
+        return kb_id
 
     @staticmethod
     def get_knowledge_base(
         db: Session,
         knowledge_base_id: int,
         user_id: int,
-    ) -> Optional[KnowledgeBase]:
+    ) -> Optional[Kind]:
         """
         Get a knowledge base by ID with permission check.
 
@@ -108,13 +123,14 @@ class KnowledgeService:
             user_id: Requesting user ID
 
         Returns:
-            KnowledgeBase if found and accessible, None otherwise
+            Kind if found and accessible, None otherwise
         """
         kb = (
-            db.query(KnowledgeBase)
+            db.query(Kind)
             .filter(
-                KnowledgeBase.id == knowledge_base_id,
-                KnowledgeBase.is_active == True,
+                Kind.id == knowledge_base_id,
+                Kind.kind == "KnowledgeBase",
+                Kind.is_active == True,
             )
             .first()
         )
@@ -139,7 +155,7 @@ class KnowledgeService:
         user_id: int,
         scope: ResourceScope = ResourceScope.ALL,
         group_name: Optional[str] = None,
-    ) -> list[KnowledgeBase]:
+    ) -> list[Kind]:
         """
         List knowledge bases based on scope.
 
@@ -154,13 +170,14 @@ class KnowledgeService:
         """
         if scope == ResourceScope.PERSONAL:
             return (
-                db.query(KnowledgeBase)
+                db.query(Kind)
                 .filter(
-                    KnowledgeBase.user_id == user_id,
-                    KnowledgeBase.namespace == "default",
-                    KnowledgeBase.is_active == True,
+                    Kind.kind == "KnowledgeBase",
+                    Kind.user_id == user_id,
+                    Kind.namespace == "default",
+                    Kind.is_active == True,
                 )
-                .order_by(KnowledgeBase.updated_at.desc())
+                .order_by(Kind.updated_at.desc())
                 .all()
             )
 
@@ -174,23 +191,25 @@ class KnowledgeService:
                 return []
 
             return (
-                db.query(KnowledgeBase)
+                db.query(Kind)
                 .filter(
-                    KnowledgeBase.namespace == group_name,
-                    KnowledgeBase.is_active == True,
+                    Kind.kind == "KnowledgeBase",
+                    Kind.namespace == group_name,
+                    Kind.is_active == True,
                 )
-                .order_by(KnowledgeBase.updated_at.desc())
+                .order_by(Kind.updated_at.desc())
                 .all()
             )
 
         else:  # ALL
             # Get personal knowledge bases
             personal = (
-                db.query(KnowledgeBase)
+                db.query(Kind)
                 .filter(
-                    KnowledgeBase.user_id == user_id,
-                    KnowledgeBase.namespace == "default",
-                    KnowledgeBase.is_active == True,
+                    Kind.kind == "KnowledgeBase",
+                    Kind.user_id == user_id,
+                    Kind.namespace == "default",
+                    Kind.is_active == True,
                 )
                 .all()
             )
@@ -198,10 +217,11 @@ class KnowledgeService:
             # Get team knowledge bases from accessible groups
             accessible_groups = get_user_groups(db, user_id)
             team = (
-                db.query(KnowledgeBase)
+                db.query(Kind)
                 .filter(
-                    KnowledgeBase.namespace.in_(accessible_groups),
-                    KnowledgeBase.is_active == True,
+                    Kind.kind == "KnowledgeBase",
+                    Kind.namespace.in_(accessible_groups),
+                    Kind.is_active == True,
                 )
                 .all()
             ) if accessible_groups else []
@@ -214,7 +234,7 @@ class KnowledgeService:
         knowledge_base_id: int,
         user_id: int,
         data: KnowledgeBaseUpdate,
-    ) -> Optional[KnowledgeBase]:
+    ) -> Optional[Kind]:
         """
         Update a knowledge base.
 
@@ -225,7 +245,7 @@ class KnowledgeService:
             data: Update data
 
         Returns:
-            Updated KnowledgeBase if successful, None otherwise
+            Updated Kind if successful, None otherwise
 
         Raises:
             ValueError: If validation fails or permission denied
@@ -239,25 +259,36 @@ class KnowledgeService:
             if not check_group_permission(db, user_id, kb.namespace, GroupRole.Maintainer):
                 raise ValueError("Only Owner or Maintainer can update knowledge base in this group")
 
+        # Get current spec
+        kb_json = kb.json
+        spec = kb_json.get("spec", {})
+
         # Check duplicate name if name is being changed
-        if data.name and data.name != kb.name:
+        if data.name and data.name != spec.get("name"):
             existing = (
-                db.query(KnowledgeBase)
+                db.query(Kind)
                 .filter(
-                    KnowledgeBase.name == data.name,
-                    KnowledgeBase.user_id == kb.user_id,
-                    KnowledgeBase.namespace == kb.namespace,
-                    KnowledgeBase.is_active == True,
-                    KnowledgeBase.id != knowledge_base_id,
+                    Kind.kind == "KnowledgeBase",
+                    Kind.user_id == kb.user_id,
+                    Kind.namespace == kb.namespace,
+                    Kind.is_active == True,
+                    Kind.id != knowledge_base_id,
                 )
-                .first()
+                .all()
             )
-            if existing:
-                raise ValueError(f"Knowledge base with name '{data.name}' already exists")
-            kb.name = data.name
+
+            for existing_kb in existing:
+                existing_spec = existing_kb.json.get("spec", {})
+                if existing_spec.get("name") == data.name:
+                    raise ValueError(f"Knowledge base with name '{data.name}' already exists")
+
+            spec["name"] = data.name
 
         if data.description is not None:
-            kb.description = data.description
+            spec["description"] = data.description
+
+        kb_json["spec"] = spec
+        kb.json = kb_json
 
         db.commit()
         db.refresh(kb)
@@ -294,7 +325,7 @@ class KnowledgeService:
 
         # Physically delete all documents in this knowledge base
         db.query(KnowledgeDocument).filter(
-            KnowledgeDocument.knowledge_base_id == knowledge_base_id,
+            KnowledgeDocument.kind_id == knowledge_base_id,
         ).delete()
 
         # Physically delete the knowledge base
@@ -336,7 +367,7 @@ class KnowledgeService:
                 raise ValueError("Only Owner or Maintainer can add documents to this knowledge base")
 
         document = KnowledgeDocument(
-            knowledge_base_id=knowledge_base_id,
+            kind_id=knowledge_base_id,
             attachment_id=data.attachment_id,
             name=data.name,
             file_extension=data.file_extension,
@@ -345,8 +376,13 @@ class KnowledgeService:
         )
         db.add(document)
 
-        # Update document count
-        kb.document_count += 1
+        # Update document count in Kind spec
+        kb_json = kb.json
+        spec = kb_json.get("spec", {})
+        spec["document_count"] = spec.get("document_count", 0) + 1
+        kb_json["spec"] = spec
+        kb.json = kb_json
+
         db.commit()
         db.refresh(document)
         return document
@@ -381,7 +417,7 @@ class KnowledgeService:
             return None
 
         # Check access via knowledge base
-        kb = KnowledgeService.get_knowledge_base(db, doc.knowledge_base_id, user_id)
+        kb = KnowledgeService.get_knowledge_base(db, doc.kind_id, user_id)
         if not kb:
             return None
 
@@ -412,7 +448,7 @@ class KnowledgeService:
         return (
             db.query(KnowledgeDocument)
             .filter(
-                KnowledgeDocument.knowledge_base_id == knowledge_base_id,
+                KnowledgeDocument.kind_id == knowledge_base_id,
                 KnowledgeDocument.is_active == True,
             )
             .order_by(KnowledgeDocument.created_at.desc())
@@ -447,8 +483,8 @@ class KnowledgeService:
 
         # Check permission for team knowledge base
         kb = (
-            db.query(KnowledgeBase)
-            .filter(KnowledgeBase.id == doc.knowledge_base_id)
+            db.query(Kind)
+            .filter(Kind.id == doc.kind_id, Kind.kind == "KnowledgeBase")
             .first()
         )
         if kb and kb.namespace != "default":
@@ -491,8 +527,8 @@ class KnowledgeService:
 
         # Check permission for team knowledge base
         kb = (
-            db.query(KnowledgeBase)
-            .filter(KnowledgeBase.id == doc.knowledge_base_id)
+            db.query(Kind)
+            .filter(Kind.id == doc.kind_id, Kind.kind == "KnowledgeBase")
             .first()
         )
         if kb and kb.namespace != "default":
@@ -501,7 +537,11 @@ class KnowledgeService:
 
         # Update document count
         if kb:
-            kb.document_count = max(0, kb.document_count - 1)
+            kb_json = kb.json
+            spec = kb_json.get("spec", {})
+            spec["document_count"] = max(0, spec.get("document_count", 0) - 1)
+            kb_json["spec"] = spec
+            kb.json = kb_json
 
         # Physically delete document
         db.delete(doc)
@@ -527,22 +567,23 @@ class KnowledgeService:
         """
         # Get personal knowledge bases
         personal_kbs = (
-            db.query(KnowledgeBase)
+            db.query(Kind)
             .filter(
-                KnowledgeBase.user_id == user_id,
-                KnowledgeBase.namespace == "default",
-                KnowledgeBase.is_active == True,
+                Kind.kind == "KnowledgeBase",
+                Kind.user_id == user_id,
+                Kind.namespace == "default",
+                Kind.is_active == True,
             )
-            .order_by(KnowledgeBase.updated_at.desc())
+            .order_by(Kind.updated_at.desc())
             .all()
         )
 
         personal = [
             AccessibleKnowledgeBase(
                 id=kb.id,
-                name=kb.name,
-                description=kb.description,
-                document_count=kb.document_count,
+                name=kb.json.get("spec", {}).get("name", ""),
+                description=kb.json.get("spec", {}).get("description"),
+                document_count=kb.json.get("spec", {}).get("document_count", 0),
                 updated_at=kb.updated_at,
             )
             for kb in personal_kbs
@@ -566,12 +607,13 @@ class KnowledgeService:
 
             # Get knowledge bases in this group
             group_kbs = (
-                db.query(KnowledgeBase)
+                db.query(Kind)
                 .filter(
-                    KnowledgeBase.namespace == group_name,
-                    KnowledgeBase.is_active == True,
+                    Kind.kind == "KnowledgeBase",
+                    Kind.namespace == group_name,
+                    Kind.is_active == True,
                 )
-                .order_by(KnowledgeBase.updated_at.desc())
+                .order_by(Kind.updated_at.desc())
                 .all()
             )
 
@@ -583,9 +625,9 @@ class KnowledgeService:
                         knowledge_bases=[
                             AccessibleKnowledgeBase(
                                 id=kb.id,
-                                name=kb.name,
-                                description=kb.description,
-                                document_count=kb.document_count,
+                                name=kb.json.get("spec", {}).get("name", ""),
+                                description=kb.json.get("spec", {}).get("description"),
+                                document_count=kb.json.get("spec", {}).get("document_count", 0),
                                 updated_at=kb.updated_at,
                             )
                             for kb in group_kbs
@@ -613,10 +655,11 @@ class KnowledgeService:
             True if user has management permission
         """
         kb = (
-            db.query(KnowledgeBase)
+            db.query(Kind)
             .filter(
-                KnowledgeBase.id == knowledge_base_id,
-                KnowledgeBase.is_active == True,
+                Kind.id == knowledge_base_id,
+                Kind.kind == "KnowledgeBase",
+                Kind.is_active == True,
             )
             .first()
         )

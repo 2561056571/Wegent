@@ -4,7 +4,7 @@
 
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Users, User, Plus, FileText, Pencil, Trash2, ArrowRight, Globe, ArrowLeft, Search } from 'lucide-react'
 import { Spinner } from '@/components/ui/spinner'
 import { Card } from '@/components/ui/card'
@@ -15,7 +15,7 @@ import { DocumentList } from './DocumentList'
 import { useTranslation } from '@/hooks/useTranslation'
 import { listGroups } from '@/apis/groups'
 import { useKnowledgeBases } from '../hooks/useKnowledgeBases'
-import type { Group } from '@/types/group'
+import type { Group, GroupRole } from '@/types/group'
 import type { KnowledgeBase } from '@/types/knowledge'
 
 type DocumentTabType = 'personal' | 'group' | 'external'
@@ -65,6 +65,33 @@ export function KnowledgeDocumentPage() {
   // Personal knowledge bases
   const personalKb = useKnowledgeBases({ scope: 'personal' })
 
+  // Build group role map from loaded groups
+  const groupRoleMap = useMemo(() => {
+    const roleMap = new Map<string, GroupRole>()
+    groups.forEach((group) => {
+      if (group.my_role) {
+        roleMap.set(group.name, group.my_role)
+      }
+    })
+    return roleMap
+  }, [groups])
+
+  // Helper function to check if user can manage a knowledge base
+  // For personal knowledge bases (namespace === 'default'), always allow
+  // For group knowledge bases, check if user has Developer or higher role
+  const canManageKnowledgeBase = useCallback(
+    (kb: KnowledgeBase) => {
+      // Personal knowledge base - always can manage
+      if (kb.namespace === 'default') {
+        return true
+      }
+      // Group knowledge base - check role
+      const role = groupRoleMap.get(kb.namespace)
+      return role === 'Owner' || role === 'Maintainer' || role === 'Developer'
+    },
+    [groupRoleMap]
+  )
+
   // Load user's groups
   useEffect(() => {
     const loadGroups = async () => {
@@ -86,43 +113,31 @@ export function KnowledgeDocumentPage() {
   }
 
   const handleCreate = async (data: { name: string; description?: string }) => {
-    try {
-      await personalKb.create({
-        name: data.name,
-        description: data.description,
-        namespace: createForGroup || 'default',
-      })
-      setShowCreateDialog(false)
-      // Refresh the appropriate list based on whether it's a group or personal knowledge base
-      if (createForGroup) {
-        setGroupRefreshKey((prev) => prev + 1)
-      } else {
-        personalKb.refresh()
-      }
-      setCreateForGroup(null)
-    } catch {
-      // Error handled by hook
+    await personalKb.create({
+      name: data.name,
+      description: data.description,
+      namespace: createForGroup || 'default',
+    })
+    setShowCreateDialog(false)
+    // Refresh the appropriate list based on whether it's a group or personal knowledge base
+    if (createForGroup) {
+      setGroupRefreshKey((prev) => prev + 1)
+    } else {
+      personalKb.refresh()
     }
+    setCreateForGroup(null)
   }
 
   const handleUpdate = async (data: { name: string; description?: string }) => {
     if (!editingKb) return
-    try {
-      await personalKb.update(editingKb.id, data)
-      setEditingKb(null)
-    } catch {
-      // Error handled by hook
-    }
+    await personalKb.update(editingKb.id, data)
+    setEditingKb(null)
   }
 
   const handleDelete = async () => {
     if (!deletingKb) return
-    try {
-      await personalKb.remove(deletingKb.id)
-      setDeletingKb(null)
-    } catch {
-      // Error handled by hook
-    }
+    await personalKb.remove(deletingKb.id)
+    setDeletingKb(null)
   }
 
   // Show document list if a knowledge base is selected
@@ -134,7 +149,7 @@ export function KnowledgeDocumentPage() {
           setSelectedKb(null)
           personalKb.refresh()
         }}
-        canManage={true}
+        canManage={canManageKnowledgeBase(selectedKb)}
       />
     )
   }
@@ -489,6 +504,13 @@ function GroupKnowledgeBaseList({
   })
   const [searchQuery, setSearchQuery] = useState('')
 
+  // Check permissions based on group role
+  // Developer or higher can create/edit, Maintainer or higher can delete
+  const groupRole = group.my_role
+  const canCreate = groupRole === 'Owner' || groupRole === 'Maintainer' || groupRole === 'Developer'
+  const canEdit = groupRole === 'Owner' || groupRole === 'Maintainer' || groupRole === 'Developer'
+  const canDelete = groupRole === 'Owner' || groupRole === 'Maintainer'
+
   // Refresh when refreshKey changes
   useEffect(() => {
     if (refreshKey > 0) {
@@ -528,23 +550,30 @@ function GroupKnowledgeBaseList({
           <Spinner />
         </div>
       ) : knowledgeBases.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <Card
-            padding="lg"
-            className="hover:bg-hover transition-colors cursor-pointer flex flex-col items-center justify-center w-64 h-48"
-            onClick={onCreateKb}
-          >
-            <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-              <Plus className="w-8 h-8 text-primary" />
-            </div>
-            <h3 className="font-medium text-base mb-2 text-text-primary">
-              {t('knowledge.document.knowledgeBase.create')}
-            </h3>
-            <p className="text-sm text-text-muted text-center">
-              {t('knowledge.document.knowledgeBase.createDesc')}
-            </p>
-          </Card>
-        </div>
+        canCreate ? (
+          <div className="flex flex-col items-center justify-center py-16">
+            <Card
+              padding="lg"
+              className="hover:bg-hover transition-colors cursor-pointer flex flex-col items-center justify-center w-64 h-48"
+              onClick={onCreateKb}
+            >
+              <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+                <Plus className="w-8 h-8 text-primary" />
+              </div>
+              <h3 className="font-medium text-base mb-2 text-text-primary">
+                {t('knowledge.document.knowledgeBase.create')}
+              </h3>
+              <p className="text-sm text-text-muted text-center">
+                {t('knowledge.document.knowledgeBase.createDesc')}
+              </p>
+            </Card>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-12 text-text-secondary">
+            <FileText className="w-12 h-12 mb-4 opacity-50" />
+            <p>{t('knowledge.document.knowledgeBase.empty')}</p>
+          </div>
+        )
       ) : (
         <div className="flex flex-col items-center">
           {/* Search bar */}
@@ -562,8 +591,8 @@ function GroupKnowledgeBaseList({
           </div>
 
           <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {/* Add knowledge base card */}
-            {!searchQuery && (
+            {/* Add knowledge base card - only show if user can create */}
+            {!searchQuery && canCreate && (
               <Card
                 padding="sm"
                 className="hover:bg-hover transition-colors cursor-pointer flex flex-col items-center justify-center h-[140px]"
@@ -582,8 +611,10 @@ function GroupKnowledgeBaseList({
                 key={kb.id}
                 knowledgeBase={kb}
                 onClick={() => onSelectKb(kb)}
-                onEdit={() => onEditKb(kb)}
-                onDelete={() => onDeleteKb(kb)}
+                onEdit={canEdit ? () => onEditKb(kb) : undefined}
+                onDelete={canDelete ? () => onDeleteKb(kb) : undefined}
+                canEdit={canEdit}
+                canDelete={canDelete}
               />
             ))}
           </div>
@@ -605,8 +636,10 @@ function GroupKnowledgeBaseList({
 interface KnowledgeBaseCardProps {
   knowledgeBase: KnowledgeBase
   onClick: () => void
-  onEdit: () => void
-  onDelete: () => void
+  onEdit?: () => void
+  onDelete?: () => void
+  canEdit?: boolean
+  canDelete?: boolean
 }
 
 function KnowledgeBaseCard({
@@ -614,6 +647,8 @@ function KnowledgeBaseCard({
   onClick,
   onEdit,
   onDelete,
+  canEdit = true,
+  canDelete = true,
 }: KnowledgeBaseCardProps) {
   const { t } = useTranslation()
 
@@ -646,26 +681,30 @@ function KnowledgeBaseCard({
         </span>
         {/* Action icons */}
         <div className="flex items-center gap-1">
-          <button
-            className="p-1.5 rounded-md text-text-muted hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
-            onClick={(e) => {
-              e.stopPropagation()
-              onEdit()
-            }}
-            title={t('actions.edit')}
-          >
-            <Pencil className="w-4 h-4" />
-          </button>
-          <button
-            className="p-1.5 rounded-md text-text-muted hover:text-error hover:bg-error/10 transition-colors opacity-0 group-hover:opacity-100"
-            onClick={(e) => {
-              e.stopPropagation()
-              onDelete()
-            }}
-            title={t('actions.delete')}
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+          {canEdit && onEdit && (
+            <button
+              className="p-1.5 rounded-md text-text-muted hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
+              onClick={(e) => {
+                e.stopPropagation()
+                onEdit()
+              }}
+              title={t('actions.edit')}
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
+          )}
+          {canDelete && onDelete && (
+            <button
+              className="p-1.5 rounded-md text-text-muted hover:text-error hover:bg-error/10 transition-colors opacity-0 group-hover:opacity-100"
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete()
+              }}
+              title={t('actions.delete')}
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
           <button
             className="p-1.5 rounded-md text-text-muted hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
             onClick={(e) => {

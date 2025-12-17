@@ -36,6 +36,7 @@ export type SettingsTabId =
   | 'group-shells'
   | 'general'
   | 'integrations'
+  | 'api-keys'
   | 'group-team';
 
 // Scope type for resource tabs
@@ -121,12 +122,13 @@ export function SettingsTabNav({
     [t]
   );
 
-  // Other tabs (not resource-based) - order: general, integrations
+  // Other tabs (not resource-based) - order: general, integrations, api-keys
   // Note: group-manager is now accessed via the group dropdown menu
   const otherTabs: TabItem[] = useMemo(
     () => [
       { id: 'general', label: t('settings.sections.general'), category: 'other' },
       { id: 'integrations', label: t('settings.integrations'), category: 'other' },
+      { id: 'api-keys', label: t('settings.api_keys'), category: 'other' },
     ],
     [t]
   );
@@ -228,7 +230,7 @@ export function SettingsTabNav({
   // Mobile: Dropdown select with groups
   if (isMobile) {
     return (
-      <div className="px-4 py-2 border-t border-border bg-white space-y-2">
+      <div className="px-4 py-2 border-t border-border bg-surface space-y-2">
         {/* Scope selector */}
         <div className="flex items-center gap-2">
           <button
@@ -325,7 +327,7 @@ export function SettingsTabNav({
   return (
     <div
       ref={indicatorContainerRef}
-      className="relative flex items-center gap-1 px-4 py-2 border-t border-border bg-white overflow-x-auto"
+      className="relative flex items-center gap-1 px-4 py-2 border-t border-border bg-surface overflow-x-auto"
     >
       {/* Sliding indicator */}
       <span

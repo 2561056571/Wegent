@@ -83,7 +83,7 @@ def list_knowledge_bases(
 
     return KnowledgeBaseListResponse(
         total=len(knowledge_bases),
-        items=[KnowledgeBaseResponse.model_validate(kb) for kb in knowledge_bases],
+        items=[KnowledgeBaseResponse.from_kind(kb) for kb in knowledge_bases],
     )
 
 
@@ -121,12 +121,26 @@ def create_knowledge_base(
     - **namespace=<group_name>**: Team knowledge base (requires Maintainer+ permission)
     """
     try:
-        knowledge_base = KnowledgeService.create_knowledge_base(
+        kb_id = KnowledgeService.create_knowledge_base(
             db=db,
             user_id=current_user.id,
             data=data,
         )
-        return KnowledgeBaseResponse.model_validate(knowledge_base)
+        # Close current transaction and start a new one to see committed data
+        # This is needed because KindServiceFactory uses its own session and commits
+        db.commit()  # Commit any pending changes in current session
+        # Fetch the created knowledge base using a fresh query
+        knowledge_base = KnowledgeService.get_knowledge_base(
+            db=db,
+            knowledge_base_id=kb_id,
+            user_id=current_user.id,
+        )
+        if not knowledge_base:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve created knowledge base",
+            )
+        return KnowledgeBaseResponse.from_kind(knowledge_base)
     except IntegrityError:
         db.rollback()
         raise HTTPException(
@@ -159,7 +173,7 @@ def get_knowledge_base(
             detail="Knowledge base not found or access denied",
         )
 
-    return KnowledgeBaseResponse.model_validate(knowledge_base)
+    return KnowledgeBaseResponse.from_kind(knowledge_base)
 
 
 @router.put("/{knowledge_base_id}", response_model=KnowledgeBaseResponse)
@@ -184,7 +198,7 @@ def update_knowledge_base(
                 detail="Knowledge base not found or access denied",
             )
 
-        return KnowledgeBaseResponse.model_validate(knowledge_base)
+        return KnowledgeBaseResponse.from_kind(knowledge_base)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -352,12 +366,20 @@ def batch_delete_documents(
 
     Deletes all specified documents that the user has permission to delete.
     Returns a summary of successful and failed operations.
+    Raises 403 if all operations fail due to permission issues.
     """
-    return KnowledgeService.batch_delete_documents(
+    result = KnowledgeService.batch_delete_documents(
         db=db,
         document_ids=data.document_ids,
         user_id=current_user.id,
     )
+    # If all operations failed, raise an error
+    if result.success_count == 0 and result.failed_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Owner or Maintainer can delete documents from this knowledge base",
+        )
+    return result
 
 
 @document_router.post("/batch/enable", response_model=BatchOperationResult)
@@ -371,12 +393,20 @@ def batch_enable_documents(
 
     Enables all specified documents that the user has permission to update.
     Returns a summary of successful and failed operations.
+    Raises 403 if all operations fail due to permission issues.
     """
-    return KnowledgeService.batch_enable_documents(
+    result = KnowledgeService.batch_enable_documents(
         db=db,
         document_ids=data.document_ids,
         user_id=current_user.id,
     )
+    # If all operations failed, raise an error
+    if result.success_count == 0 and result.failed_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Owner or Maintainer can update documents in this knowledge base",
+        )
+    return result
 
 
 @document_router.post("/batch/disable", response_model=BatchOperationResult)
@@ -390,9 +420,17 @@ def batch_disable_documents(
 
     Disables all specified documents that the user has permission to update.
     Returns a summary of successful and failed operations.
+    Raises 403 if all operations fail due to permission issues.
     """
-    return KnowledgeService.batch_disable_documents(
+    result = KnowledgeService.batch_disable_documents(
         db=db,
         document_ids=data.document_ids,
         user_id=current_user.id,
     )
+    # If all operations failed, raise an error
+    if result.success_count == 0 and result.failed_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Owner or Maintainer can update documents in this knowledge base",
+        )
+    return result
