@@ -32,8 +32,6 @@ const tabs: KnowledgeTabItem[] = [
     id: 'document',
     labelKey: 'knowledge.tabs.document',
     icon: DocumentTextIcon,
-    disabled: true,
-    comingSoon: true,
   },
 ];
 
@@ -45,7 +43,7 @@ export function KnowledgeTabs({ activeTab, onTabChange }: KnowledgeTabsProps) {
   const { t } = useTranslation('common');
 
   return (
-    <div className="flex items-center gap-1 px-4 py-2 border-t border-border bg-white">
+    <div className="flex items-center gap-1 px-4 py-2 border-t border-border bg-base">
       {tabs.map(tab => {
         const isActive = activeTab === tab.id;
         const Icon = tab.icon;

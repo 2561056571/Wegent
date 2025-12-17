@@ -7,6 +7,7 @@ from app.api.endpoints import (
     auth,
     groups,
     health,
+    knowledge,
     oidc,
     quota,
     repository,
@@ -52,5 +53,11 @@ api_router.include_router(dify.router, prefix="/dify", tags=["dify"])
 api_router.include_router(wiki.router, prefix="/wiki", tags=["wiki"])
 api_router.include_router(
     wiki.internal_router, prefix="/internal/wiki", tags=["wiki-internal"]
+)
+api_router.include_router(
+    knowledge.router, prefix="/knowledge-bases", tags=["knowledge"]
+)
+api_router.include_router(
+    knowledge.document_router, prefix="/knowledge-documents", tags=["knowledge"]
 )
 api_router.include_router(k_router)
