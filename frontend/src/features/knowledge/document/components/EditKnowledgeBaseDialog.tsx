@@ -16,8 +16,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import type { KnowledgeBase } from '@/types/knowledge';
+import { RetrievalSettingsSection } from './RetrievalSettingsSection';
 
 interface EditKnowledgeBaseDialogProps {
   open: boolean;
@@ -38,11 +40,13 @@ export function EditKnowledgeBaseDialog({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
     if (knowledgeBase) {
       setName(knowledgeBase.name);
       setDescription(knowledgeBase.description || '');
+      setShowAdvanced(false); // Reset expanded state
     }
   }, [knowledgeBase]);
 
@@ -76,7 +80,7 @@ export function EditKnowledgeBaseDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t('knowledge.document.knowledgeBase.edit')}</DialogTitle>
         </DialogHeader>
@@ -105,6 +109,38 @@ export function EditKnowledgeBaseDialog({
                 rows={3}
               />
             </div>
+
+            {/* Advanced Settings (Read-only) */}
+            {knowledgeBase?.retrieval_config && (
+              <div className="border-t border-border pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="flex items-center gap-2 text-sm font-medium text-text-primary hover:text-primary transition-colors"
+                >
+                  {showAdvanced ? (
+                    <ChevronDown className="w-4 h-4" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4" />
+                  )}
+                  {t('knowledge.document.advancedSettings.title')}
+                  <span className="text-xs text-text-muted ml-2">
+                    ({t('knowledge.document.advancedSettings.readOnly')})
+                  </span>
+                </button>
+
+                {showAdvanced && (
+                  <div className="mt-4 p-4 bg-bg-muted rounded-lg border border-border">
+                    <RetrievalSettingsSection
+                      config={knowledgeBase.retrieval_config}
+                      onChange={() => {}} // No-op for read-only
+                      readOnly={true}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
             {error && <p className="text-sm text-error">{error}</p>}
           </div>
           <DialogFooter>

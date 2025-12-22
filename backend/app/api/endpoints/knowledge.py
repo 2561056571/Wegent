@@ -6,10 +6,11 @@
 API endpoints for knowledge base and document management.
 """
 
+import asyncio
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -30,7 +31,10 @@ from app.schemas.knowledge import (
     KnowledgeDocumentUpdate,
     ResourceScope,
 )
+from app.schemas.rag import SplitterConfig
 from app.services.knowledge_service import KnowledgeService
+from app.services.rag.document_service import DocumentService
+from app.services.rag.storage.factory import create_storage_backend_from_retriever
 
 logger = logging.getLogger(__name__)
 
@@ -264,9 +268,10 @@ def list_documents(
     response_model=KnowledgeDocumentResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_document(
+async def create_document(
     knowledge_base_id: int,
     data: KnowledgeDocumentCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(security.get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -275,20 +280,122 @@ def create_document(
 
     The attachment_id should reference an already uploaded attachment
     via /api/attachments/upload endpoint.
+
+    After creating the document, automatically triggers RAG indexing
+    if the knowledge base has retrieval_config configured.
     """
     try:
+        # Create document record
         document = KnowledgeService.create_document(
             db=db,
             knowledge_base_id=knowledge_base_id,
             user_id=current_user.id,
             data=data,
         )
+
+        # Get knowledge base to check for retrieval_config
+        knowledge_base = KnowledgeService.get_knowledge_base(
+            db=db,
+            knowledge_base_id=knowledge_base_id,
+            user_id=current_user.id,
+        )
+
+        # If knowledge base has retrieval_config, trigger RAG indexing
+        if knowledge_base:
+            spec = knowledge_base.json.get("spec", {})
+            retrieval_config = spec.get("retrieval_config")
+
+            if retrieval_config:
+                # Extract configuration
+                retriever_ref = retrieval_config.get("retriever_ref")
+                embedding_config = retrieval_config.get("embedding_config")
+
+                if retriever_ref and embedding_config:
+                    # Schedule RAG indexing in background
+                    background_tasks.add_task(
+                        _index_document_async,
+                        db=db,
+                        knowledge_base_id=str(knowledge_base_id),
+                        attachment_id=data.attachment_id,
+                        retriever_name=retriever_ref.get("name"),
+                        retriever_namespace=retriever_ref.get("namespace", "default"),
+                        embedding_model_name=embedding_config.get("model_name"),
+                        embedding_model_namespace=embedding_config.get("model_namespace", "default"),
+                        user_id=current_user.id,
+                        splitter_config=data.splitter_config,
+                    )
+                    logger.info(
+                        f"Scheduled RAG indexing for document {document.id} in knowledge base {knowledge_base_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"Knowledge base {knowledge_base_id} has incomplete retrieval_config, skipping RAG indexing"
+                    )
+
         return KnowledgeDocumentResponse.model_validate(document)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
+
+
+async def _index_document_async(
+    db: Session,
+    knowledge_base_id: str,
+    attachment_id: int,
+    retriever_name: str,
+    retriever_namespace: str,
+    embedding_model_name: str,
+    embedding_model_namespace: str,
+    user_id: int,
+    splitter_config: Optional[SplitterConfig] = None,
+):
+    """
+    Background task for RAG document indexing.
+
+    Args:
+        db: Database session
+        knowledge_base_id: Knowledge base ID
+        attachment_id: Attachment ID
+        retriever_name: Retriever name
+        retriever_namespace: Retriever namespace
+        embedding_model_name: Embedding model name
+        embedding_model_namespace: Embedding model namespace
+        user_id: User ID
+        splitter_config: Optional splitter configuration
+    """
+    try:
+        # Create storage backend from retriever
+        storage_backend = create_storage_backend_from_retriever(
+            db=db,
+            user_id=user_id,
+            retriever_name=retriever_name,
+            retriever_namespace=retriever_namespace,
+        )
+
+        # Create document service
+        doc_service = DocumentService(storage_backend=storage_backend)
+
+        # Index document
+        result = await doc_service.index_document(
+            knowledge_id=knowledge_base_id,
+            embedding_model_name=embedding_model_name,
+            embedding_model_namespace=embedding_model_namespace,
+            user_id=user_id,
+            db=db,
+            attachment_id=attachment_id,
+            splitter_config=splitter_config,
+        )
+
+        logger.info(
+            f"Successfully indexed document for knowledge base {knowledge_base_id}: {result}"
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to index document for knowledge base {knowledge_base_id}: {str(e)}"
+        )
+        # Don't raise exception to avoid blocking document creation
 
 
 # Document-specific endpoints (without knowledge_base_id in path)

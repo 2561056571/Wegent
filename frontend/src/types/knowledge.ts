@@ -10,6 +10,31 @@ export type DocumentStatus = 'enabled' | 'disabled';
 
 export type KnowledgeResourceScope = 'personal' | 'group' | 'all';
 
+// Retrieval Config types
+export interface RetrievalConfig {
+  retriever_name: string;
+  retriever_namespace: string;
+  embedding_config: {
+    model_name: string;
+    model_namespace: string;
+  };
+  retrieval_mode?: 'vector' | 'keyword' | 'hybrid';
+  top_k?: number;
+  score_threshold?: number;
+  hybrid_weights?: {
+    vector_weight: number;
+    keyword_weight: number;
+  };
+}
+
+// Splitter Config types
+export interface SplitterConfig {
+  type: string;
+  separator: string;
+  chunk_size: number;
+  chunk_overlap: number;
+}
+
 // Knowledge Base types
 export interface KnowledgeBase {
   id: number;
@@ -19,6 +44,7 @@ export interface KnowledgeBase {
   namespace: string;
   document_count: number;
   is_active: boolean;
+  retrieval_config?: RetrievalConfig;
   created_at: string;
   updated_at: string;
 }
@@ -50,6 +76,7 @@ export interface KnowledgeDocument {
   status: DocumentStatus;
   user_id: number;
   is_active: boolean;
+  splitter_config?: SplitterConfig;
   created_at: string;
   updated_at: string;
 }

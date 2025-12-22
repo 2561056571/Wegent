@@ -8,12 +8,17 @@ Refactored to use modular architecture with pluggable storage backends.
 """
 
 import asyncio
+import os
+import tempfile
 import uuid
 from typing import Dict, Optional
 
 from sqlalchemy.orm import Session
 
+from app.models.subtask_attachment import SubtaskAttachment
 from app.schemas.rag import SplitterConfig
+from app.services.attachment.storage_factory import \
+    get_storage_backend as get_attachment_storage
 from app.services.rag.embedding.factory import create_embedding_model_from_crd
 from app.services.rag.index import DocumentIndexer
 from app.services.rag.storage.base import BaseStorageBackend
@@ -34,10 +39,47 @@ class DocumentService:
         """
         self.storage_backend = storage_backend
 
+    def _get_file_from_attachment(
+        self, db: Session, attachment_id: int
+    ) -> tuple[bytes, str]:
+        """
+        Get file content and filename from attachment.
+
+        Args:
+            db: Database session
+            attachment_id: Attachment ID
+
+        Returns:
+            Tuple of (file_content, filename)
+
+        Raises:
+            ValueError: If attachment not found
+        """
+        # Query attachment
+        attachment = (
+            db.query(SubtaskAttachment)
+            .filter(
+                SubtaskAttachment.id == attachment_id, SubtaskAttachment.is_active == True
+            )
+            .first()
+        )
+
+        if not attachment:
+            raise ValueError(f"Attachment {attachment_id} not found")
+
+        # Get storage backend
+        storage = get_attachment_storage(db)
+
+        # Download file content
+        file_content = storage.download(attachment)
+
+        return file_content, attachment.original_filename
+
     def _index_document_sync(
         self,
         knowledge_id: str,
-        file_path: str,
+        file_path: Optional[str],
+        attachment_id: Optional[int],
         embedding_model_name: str,
         embedding_model_namespace: str,
         user_id: int,
@@ -50,7 +92,8 @@ class DocumentService:
 
         Args:
             knowledge_id: Knowledge base ID
-            file_path: Path to document file
+            file_path: Path to document file (optional, mutually exclusive with attachment_id)
+            attachment_id: Attachment ID (optional, mutually exclusive with file_path)
             embedding_model_name: Embedding model name
             embedding_model_namespace: Embedding model namespace
             user_id: User ID
@@ -60,42 +103,66 @@ class DocumentService:
         Returns:
             Indexing result dict
         """
+        if file_path is None and attachment_id is None:
+            raise ValueError("Either file_path or attachment_id must be provided")
+
         # Generate document reference ID
         doc_ref = f"doc_{uuid.uuid4().hex[:12]}"
 
-        # Create embedding model from CRD
-        embed_model = create_embedding_model_from_crd(
-            db=db,
-            user_id=user_id,
-            model_name=embedding_model_name,
-            model_namespace=embedding_model_namespace,
-        )
+        # Get file path (either provided or from attachment)
+        temp_file = None
+        effective_file_path = file_path
 
-        # Create indexer with storage backend and splitter config
-        indexer = DocumentIndexer(
-            storage_backend=self.storage_backend,
-            embed_model=embed_model,
-            splitter_config=splitter_config,
-        )
+        if attachment_id is not None:
+            # Get file from attachment
+            file_content, filename = self._get_file_from_attachment(db, attachment_id)
 
-        # Index document (synchronous operation, pass user_id)
-        result = indexer.index_document(
-            knowledge_id=knowledge_id,
-            file_path=file_path,
-            doc_ref=doc_ref,
-            user_id=user_id,
-        )
+            # Create temporary file
+            _, ext = os.path.splitext(filename)
+            temp_file = tempfile.NamedTemporaryFile(mode="wb", suffix=ext, delete=False)
+            temp_file.write(file_content)
+            temp_file.close()
+            effective_file_path = temp_file.name
 
-        return result
+        try:
+            # Create embedding model from CRD
+            embed_model = create_embedding_model_from_crd(
+                db=db,
+                user_id=user_id,
+                model_name=embedding_model_name,
+                model_namespace=embedding_model_namespace,
+            )
+
+            # Create indexer with storage backend and splitter config
+            indexer = DocumentIndexer(
+                storage_backend=self.storage_backend,
+                embed_model=embed_model,
+                splitter_config=splitter_config,
+            )
+
+            # Index document (synchronous operation, pass user_id)
+            result = indexer.index_document(
+                knowledge_id=knowledge_id,
+                file_path=effective_file_path,
+                doc_ref=doc_ref,
+                user_id=user_id,
+            )
+
+            return result
+        finally:
+            # Clean up temporary file if created
+            if temp_file and os.path.exists(temp_file.name):
+                os.unlink(temp_file.name)
 
     async def index_document(
         self,
         knowledge_id: str,
-        file_path: str,
         embedding_model_name: str,
         embedding_model_namespace: str,
         user_id: int,
         db: Session,
+        file_path: Optional[str] = None,
+        attachment_id: Optional[int] = None,
         splitter_config: Optional[SplitterConfig] = None,
     ) -> Dict:
         """
@@ -103,11 +170,12 @@ class DocumentService:
 
         Args:
             knowledge_id: Knowledge base ID
-            file_path: Path to document file
             embedding_model_name: Embedding model name
             embedding_model_namespace: Embedding model namespace
             user_id: User ID
             db: Database session
+            file_path: Path to document file (optional, mutually exclusive with attachment_id)
+            attachment_id: Attachment ID (optional, mutually exclusive with file_path)
             splitter_config: Optional splitter configuration. If None, defaults to SemanticSplitter
 
         Returns:
@@ -128,6 +196,7 @@ class DocumentService:
             self._index_document_sync,
             knowledge_id,
             file_path,
+            attachment_id,
             embedding_model_name,
             embedding_model_namespace,
             user_id,
