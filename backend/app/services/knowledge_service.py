@@ -108,6 +108,7 @@ class KnowledgeService:
                 name=data.name,
                 description=data.description or "",
                 document_count=0,
+                retrievalConfig=data.retrievalConfig,  # Include retrievalConfig
             ),
         )
 
@@ -399,6 +400,7 @@ class KnowledgeService:
             file_extension=data.file_extension,
             file_size=data.file_size,
             user_id=user_id,
+            splitter_config=data.splitter_config.model_dump() if data.splitter_config else None,  # Save splitter_config
         )
         db.add(document)
 

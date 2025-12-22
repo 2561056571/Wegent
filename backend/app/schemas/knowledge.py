@@ -98,7 +98,7 @@ class KnowledgeBaseResponse(BaseModel):
     namespace: str
     document_count: int
     is_active: bool
-    retrievalConfig: Optional[RetrievalConfig] = None
+    retrievalConfig: Optional[RetrievalConfig] = Field(None, alias="retrieval_config")
     created_at: datetime
     updated_at: datetime
 
@@ -121,6 +121,9 @@ class KnowledgeBaseResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        populate_by_name = True
+        # Serialize using alias (snake_case) for frontend
+        by_alias = True
 
 
 class KnowledgeBaseListResponse(BaseModel):
