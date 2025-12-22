@@ -304,24 +304,32 @@ async def create_document(
         # If knowledge base has retrieval_config, trigger RAG indexing
         if knowledge_base:
             spec = knowledge_base.json.get("spec", {})
-            retrieval_config = spec.get("retrieval_config")
+            retrieval_config = spec.get("retrievalConfig")
 
             if retrieval_config:
-                # Extract configuration
-                retriever_ref = retrieval_config.get("retriever_ref")
-                embedding_config = retrieval_config.get("embedding_config")
+                # Extract configuration - support both camelCase and snake_case
+                retriever_ref = retrieval_config.get("retrieverRef") or retrieval_config.get("retriever_ref")
+                embedding_model_ref = retrieval_config.get("embeddingModelRef") or retrieval_config.get("embedding_config")
 
-                if retriever_ref and embedding_config:
+                if retriever_ref and embedding_model_ref:
+                    # Extract retriever info
+                    retriever_name = retriever_ref.get("name")
+                    retriever_namespace = retriever_ref.get("namespace", "default")
+
+                    # Extract embedding model info - support both formats
+                    embedding_model_name = embedding_model_ref.get("name") or embedding_model_ref.get("model_name")
+                    embedding_model_namespace = embedding_model_ref.get("namespace", "default") or embedding_model_ref.get("model_namespace", "default")
+
                     # Schedule RAG indexing in background
                     background_tasks.add_task(
                         _index_document_async,
                         db=db,
                         knowledge_base_id=str(knowledge_base_id),
                         attachment_id=data.attachment_id,
-                        retriever_name=retriever_ref.get("name"),
-                        retriever_namespace=retriever_ref.get("namespace", "default"),
-                        embedding_model_name=embedding_config.get("model_name"),
-                        embedding_model_namespace=embedding_config.get("model_namespace", "default"),
+                        retriever_name=retriever_name,
+                        retriever_namespace=retriever_namespace,
+                        embedding_model_name=embedding_model_name,
+                        embedding_model_namespace=embedding_model_namespace,
                         user_id=current_user.id,
                         splitter_config=data.splitter_config,
                     )
@@ -330,7 +338,7 @@ async def create_document(
                     )
                 else:
                     logger.warning(
-                        f"Knowledge base {knowledge_base_id} has incomplete retrieval_config, skipping RAG indexing"
+                        f"Knowledge base {knowledge_base_id} has incomplete retrievalConfig, skipping RAG indexing"
                     )
 
         return KnowledgeDocumentResponse.model_validate(document)

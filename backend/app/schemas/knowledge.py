@@ -33,30 +33,43 @@ class ResourceScope(str, Enum):
 
 class RetrieverRef(BaseModel):
     """Reference to a Retriever"""
+
     name: str
     namespace: str = "default"
 
 
 class EmbeddingModelRef(BaseModel):
     """Reference to an Embedding Model"""
-    name: str
-    namespace: str = "default"
+
+    name: str = Field(..., alias="model_name")
+    namespace: str = Field("default", alias="model_namespace")
+
+    class Config:
+        populate_by_name = True  # Allow both field name and alias
 
 
 class HybridWeights(BaseModel):
     """Hybrid search weights configuration"""
-    vectorWeight: float = Field(0.7, ge=0.0, le=1.0)
-    keywordWeight: float = Field(0.3, ge=0.0, le=1.0)
+
+    vectorWeight: float = Field(0.7, ge=0.0, le=1.0, alias="vector_weight")
+    keywordWeight: float = Field(0.3, ge=0.0, le=1.0, alias="keyword_weight")
+
+    class Config:
+        populate_by_name = True
 
 
 class RetrievalConfig(BaseModel):
     """Retrieval configuration for knowledge base"""
-    retrieverRef: RetrieverRef
-    embeddingModelRef: EmbeddingModelRef
-    retrievalMode: str = Field("vector", description="Retrieval mode: 'vector', 'keyword', or 'hybrid'")
-    topK: int = Field(5, ge=1, le=10)
-    scoreThreshold: float = Field(0.7, ge=0.0, le=1.0)
-    hybridWeights: Optional[HybridWeights] = None
+
+    retrieverRef: RetrieverRef = Field(..., alias="retriever_ref")
+    embeddingModelRef: EmbeddingModelRef = Field(..., alias="embedding_config")
+    retrievalMode: str = Field("vector", description="Retrieval mode: 'vector', 'keyword', or 'hybrid'", alias="retrieval_mode")
+    topK: int = Field(5, ge=1, le=10, alias="top_k")
+    scoreThreshold: float = Field(0.7, ge=0.0, le=1.0, alias="score_threshold")
+    hybridWeights: Optional[HybridWeights] = Field(None, alias="hybrid_weights")
+
+    class Config:
+        populate_by_name = True
 
 
 class KnowledgeBaseCreate(BaseModel):
