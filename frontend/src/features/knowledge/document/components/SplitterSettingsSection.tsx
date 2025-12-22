@@ -61,9 +61,8 @@ export function SplitterSettingsSection({
           value={config.type || 'general'}
           onValueChange={value => onChange({ ...config, type: value })}
           disabled={readOnly}
-        >
-          <option value="general">{t('knowledge.document.splitter.general')}</option>
-        </SearchableSelect>
+          items={[{ value: 'general', label: t('knowledge.document.splitter.general') }]}
+        />
       </div>
 
       {/* Separator */}
@@ -77,16 +76,12 @@ export function SplitterSettingsSection({
           disabled={readOnly}
           placeholder="\n\n"
         />
-        <p className="text-xs text-text-muted">
-          {t('knowledge.document.splitter.separatorHint')}
-        </p>
+        <p className="text-xs text-text-muted">{t('knowledge.document.splitter.separatorHint')}</p>
       </div>
 
       {/* Chunk Size */}
       <div className="space-y-2">
-        <Label htmlFor="chunk-size">
-          {t('knowledge.document.splitter.chunkSize')}
-        </Label>
+        <Label htmlFor="chunk-size">{t('knowledge.document.splitter.chunkSize')}</Label>
         <div className="flex items-center gap-2">
           <Input
             id="chunk-size"
@@ -102,16 +97,12 @@ export function SplitterSettingsSection({
             {t('knowledge.document.splitter.characters')}
           </span>
         </div>
-        <p className="text-xs text-text-muted">
-          {t('knowledge.document.splitter.chunkSizeHint')}
-        </p>
+        <p className="text-xs text-text-muted">{t('knowledge.document.splitter.chunkSizeHint')}</p>
       </div>
 
       {/* Chunk Overlap */}
       <div className="space-y-2">
-        <Label htmlFor="chunk-overlap">
-          {t('knowledge.document.splitter.chunkOverlap')}
-        </Label>
+        <Label htmlFor="chunk-overlap">{t('knowledge.document.splitter.chunkOverlap')}</Label>
         <div className="flex items-center gap-2">
           <Input
             id="chunk-overlap"
@@ -130,9 +121,7 @@ export function SplitterSettingsSection({
         <p className="text-xs text-text-muted">
           {t('knowledge.document.splitter.chunkOverlapHint')}
         </p>
-        {overlapError && (
-          <p className="text-sm text-error">{overlapError}</p>
-        )}
+        {overlapError && <p className="text-sm text-error">{overlapError}</p>}
       </div>
     </div>
   );

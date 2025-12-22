@@ -474,6 +474,13 @@ class EmbeddingModelRef(BaseModel):
     namespace: str = "default"
 
 
+class RetrieverRef(BaseModel):
+    """Reference to a Retriever"""
+
+    name: str
+    namespace: str = "default"
+
+
 class HybridWeights(BaseModel):
     """Hybrid search weights configuration"""
 
@@ -585,13 +592,6 @@ class Retriever(BaseModel):
     kind: str = "Retriever"
     metadata: ObjectMeta
     spec: RetrieverSpec
-
-
-class RetrieverRef(BaseModel):
-    """Reference to a Retriever"""
-
-    name: str
-    namespace: str = "default"
 
 
 class RetrieverList(BaseModel):

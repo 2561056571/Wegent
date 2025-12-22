@@ -1,14 +1,14 @@
-// SPDX-FileCopyrightText: 2025 Weibo, Inc.
+// SPDX-FileCopyrightText: 2025 WeCode, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Label } from '@/components/ui/label';
 import { SearchableSelect } from '@/components/ui/searchable-select';
-import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Slider, DualWeightSlider } from '@/components/ui/slider';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useRetrievers } from '../hooks/useRetrievers';
 import { useEmbeddingModels } from '../hooks/useEmbeddingModels';
@@ -51,18 +51,17 @@ export function RetrievalSettingsSection({
   const { models: embeddingModels, loading: loadingModels } = useEmbeddingModels();
   const { methods: retrievalMethods } = useRetrievalMethods();
 
-  const [vectorWeight, setVectorWeight] = useState(
-    config.hybrid_weights?.vector_weight ?? 0.7
-  );
-  const [keywordWeight, setKeywordWeight] = useState(
-    config.hybrid_weights?.keyword_weight ?? 0.3
-  );
+  const [topK, setTopK] = useState(config.top_k ?? 5);
+  const [scoreThreshold, setScoreThreshold] = useState(config.score_threshold ?? 0.7);
+  const [vectorWeight, setVectorWeight] = useState(config.hybrid_weights?.vector_weight ?? 0.7);
 
   // Get available retrieval modes for selected retriever
   const selectedRetriever = retrievers.find(r => r.name === config.retriever_name);
-  const availableModes = selectedRetriever
-    ? retrievalMethods[selectedRetriever.storageType] || ['vector']
-    : ['vector'];
+  const availableModes = useMemo(() => {
+    return selectedRetriever
+      ? retrievalMethods[selectedRetriever.storageType] || ['vector']
+      : ['vector'];
+  }, [selectedRetriever, retrievalMethods]);
 
   // Ensure vector mode is selected if current mode is not available
   useEffect(() => {
@@ -102,31 +101,38 @@ export function RetrievalSettingsSection({
     });
   };
 
-  const handleVectorWeightChange = (value: number) => {
-    setVectorWeight(value);
-    const newKeywordWeight = Math.round((1 - value) * 100) / 100;
-    setKeywordWeight(newKeywordWeight);
-    onChange({
-      ...config,
-      hybrid_weights: {
-        vector_weight: value,
-        keyword_weight: newKeywordWeight,
-      },
-    });
-  };
+  const handleTopKChange = useCallback(
+    (values: number[]) => {
+      const newValue = values[0];
+      setTopK(newValue);
+      onChange({ ...config, top_k: newValue });
+    },
+    [config, onChange]
+  );
 
-  const handleKeywordWeightChange = (value: number) => {
-    setKeywordWeight(value);
-    const newVectorWeight = Math.round((1 - value) * 100) / 100;
-    setVectorWeight(newVectorWeight);
-    onChange({
-      ...config,
-      hybrid_weights: {
-        vector_weight: newVectorWeight,
-        keyword_weight: value,
-      },
-    });
-  };
+  const handleScoreThresholdChange = useCallback(
+    (values: number[]) => {
+      const newValue = values[0];
+      setScoreThreshold(newValue);
+      onChange({ ...config, score_threshold: newValue });
+    },
+    [config, onChange]
+  );
+
+  const handleWeightChange = useCallback(
+    (value: number) => {
+      setVectorWeight(value);
+      const newKeywordWeight = Math.round((1 - value) * 100) / 100;
+      onChange({
+        ...config,
+        hybrid_weights: {
+          vector_weight: value,
+          keyword_weight: newKeywordWeight,
+        },
+      });
+    },
+    [config, onChange]
+  );
 
   return (
     <div className="space-y-4">
@@ -134,14 +140,10 @@ export function RetrievalSettingsSection({
       <div className="space-y-2">
         <Label htmlFor="retriever">{t('knowledge.document.retrieval.retriever')}</Label>
         {loadingRetrievers ? (
-          <div className="text-sm text-text-secondary">
-            {t('actions.loading')}
-          </div>
+          <div className="text-sm text-text-secondary">{t('actions.loading')}</div>
         ) : retrievers.length === 0 ? (
           <div className="space-y-2">
-            <p className="text-sm text-warning">
-              {t('knowledge.document.retrieval.noRetriever')}
-            </p>
+            <p className="text-sm text-warning">{t('knowledge.document.retrieval.noRetriever')}</p>
             <Link href="/settings" className="text-sm text-primary hover:underline">
               {t('knowledge.document.goToSettings')}
             </Link>
@@ -153,13 +155,11 @@ export function RetrievalSettingsSection({
               onValueChange={handleRetrieverChange}
               placeholder={t('knowledge.document.retrieval.retrieverSelect')}
               disabled={readOnly}
-            >
-              {retrievers.map(retriever => (
-                <option key={retriever.name} value={retriever.name}>
-                  {retriever.displayName || retriever.name}
-                </option>
-              ))}
-            </SearchableSelect>
+              items={retrievers.map(retriever => ({
+                value: retriever.name,
+                label: retriever.displayName || retriever.name,
+              }))}
+            />
             <p className="text-xs text-text-muted">
               {t('knowledge.document.retrieval.retrieverHint')}
             </p>
@@ -169,13 +169,9 @@ export function RetrievalSettingsSection({
 
       {/* Embedding Model Selection */}
       <div className="space-y-2">
-        <Label htmlFor="embedding-model">
-          {t('knowledge.document.retrieval.embeddingModel')}
-        </Label>
+        <Label htmlFor="embedding-model">{t('knowledge.document.retrieval.embeddingModel')}</Label>
         {loadingModels ? (
-          <div className="text-sm text-text-secondary">
-            {t('actions.loading')}
-          </div>
+          <div className="text-sm text-text-secondary">{t('actions.loading')}</div>
         ) : embeddingModels.length === 0 ? (
           <div className="space-y-2">
             <p className="text-sm text-warning">
@@ -192,13 +188,11 @@ export function RetrievalSettingsSection({
               onValueChange={handleEmbeddingModelChange}
               placeholder={t('knowledge.document.retrieval.embeddingModelSelect')}
               disabled={readOnly}
-            >
-              {embeddingModels.map(model => (
-                <option key={model.name} value={model.name}>
-                  {model.displayName || model.name}
-                </option>
-              ))}
-            </SearchableSelect>
+              items={embeddingModels.map(model => ({
+                value: model.name,
+                label: model.displayName || model.name,
+              }))}
+            />
             <p className="text-xs text-text-muted">
               {t('knowledge.document.retrieval.embeddingModelHint')}
             </p>
@@ -241,36 +235,41 @@ export function RetrievalSettingsSection({
         </RadioGroup>
       </div>
 
-      {/* Top K */}
-      <div className="space-y-2">
-        <Label htmlFor="top-k">{t('knowledge.document.retrieval.topK')}</Label>
-        <Input
+      {/* Top K Slider */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="top-k">Top K</Label>
+          <span className="text-sm text-text-secondary font-medium">{topK}</span>
+        </div>
+        <Slider
           id="top-k"
-          type="number"
+          value={[topK]}
+          onValueChange={handleTopKChange}
           min={1}
           max={10}
-          value={config.top_k ?? 5}
-          onChange={e => onChange({ ...config, top_k: parseInt(e.target.value) })}
+          step={1}
           disabled={readOnly}
         />
-        <p className="text-xs text-text-muted">
-          {t('knowledge.document.retrieval.topKHint')}
-        </p>
+        <p className="text-xs text-text-muted">{t('knowledge.document.retrieval.topKHint')}</p>
       </div>
 
-      {/* Score Threshold */}
-      <div className="space-y-2">
-        <Label htmlFor="score-threshold">
-          {t('knowledge.document.retrieval.scoreThreshold')}
-        </Label>
-        <Input
+      {/* Score Threshold Slider */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="score-threshold">
+            Score {t('knowledge.document.retrieval.threshold')}
+          </Label>
+          <span className="text-sm text-text-secondary font-medium">
+            {scoreThreshold.toFixed(2)}
+          </span>
+        </div>
+        <Slider
           id="score-threshold"
-          type="number"
+          value={[scoreThreshold]}
+          onValueChange={handleScoreThresholdChange}
           min={0}
           max={1}
-          step={0.1}
-          value={config.score_threshold ?? 0.7}
-          onChange={e => onChange({ ...config, score_threshold: parseFloat(e.target.value) })}
+          step={0.05}
           disabled={readOnly}
         />
         <p className="text-xs text-text-muted">
@@ -280,52 +279,16 @@ export function RetrievalSettingsSection({
 
       {/* Hybrid Weights (only when hybrid mode is selected) */}
       {config.retrieval_mode === 'hybrid' && (
-        <div className="space-y-4 p-4 border border-border rounded-md bg-bg-muted">
+        <div className="space-y-3 p-4 border border-border rounded-lg bg-bg-muted">
           <Label>{t('knowledge.document.retrieval.hybridWeights')}</Label>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="vector-weight" className="text-sm font-normal">
-                {t('knowledge.document.retrieval.semanticWeight')}
-              </Label>
-              <span className="text-sm text-text-secondary">{vectorWeight.toFixed(2)}</span>
-            </div>
-            <Input
-              id="vector-weight"
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={vectorWeight}
-              onChange={e => handleVectorWeightChange(parseFloat(e.target.value))}
-              disabled={readOnly}
-              className="w-full"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="keyword-weight" className="text-sm font-normal">
-                {t('knowledge.document.retrieval.keywordWeight')}
-              </Label>
-              <span className="text-sm text-text-secondary">{keywordWeight.toFixed(2)}</span>
-            </div>
-            <Input
-              id="keyword-weight"
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={keywordWeight}
-              onChange={e => handleKeywordWeightChange(parseFloat(e.target.value))}
-              disabled={readOnly}
-              className="w-full"
-            />
-          </div>
-
-          <p className="text-xs text-text-muted">
-            {t('knowledge.document.retrieval.weightSum')}
-          </p>
+          <DualWeightSlider
+            value={vectorWeight}
+            onChange={handleWeightChange}
+            leftLabel={t('knowledge.document.retrieval.semanticWeight')}
+            rightLabel={t('knowledge.document.retrieval.keywordWeight')}
+            disabled={readOnly}
+          />
+          <p className="text-xs text-text-muted">{t('knowledge.document.retrieval.weightSum')}</p>
         </div>
       )}
     </div>

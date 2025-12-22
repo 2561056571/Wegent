@@ -4,7 +4,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -24,6 +24,8 @@ import {
 } from '@/components/ui/accordion';
 import { useTranslation } from '@/hooks/useTranslation';
 import { RetrievalSettingsSection, type RetrievalConfig } from './RetrievalSettingsSection';
+import { useRetrievers } from '../hooks/useRetrievers';
+import { useEmbeddingModels } from '../hooks/useEmbeddingModels';
 
 interface CreateKnowledgeBaseDialogProps {
   open: boolean;
@@ -59,6 +61,18 @@ export function CreateKnowledgeBaseDialog({
     },
   });
   const [error, setError] = useState('');
+  const [accordionValue, setAccordionValue] = useState<string>('');
+
+  // Load data when dialog opens
+  const { refetch: refetchRetrievers } = useRetrievers(scope, groupName);
+  const { refetch: refetchModels } = useEmbeddingModels();
+
+  useEffect(() => {
+    if (open) {
+      refetchRetrievers();
+      refetchModels();
+    }
+  }, [open, refetchRetrievers, refetchModels]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,11 +88,24 @@ export function CreateKnowledgeBaseDialog({
       return;
     }
 
+    // Validate retrieval config - retriever and embedding model are required
+    if (!retrievalConfig.retriever_name) {
+      setError(t('knowledge.document.retrieval.noRetriever'));
+      setAccordionValue('advanced');
+      return;
+    }
+
+    if (!retrievalConfig.embedding_config?.model_name) {
+      setError(t('knowledge.document.retrieval.noEmbeddingModel'));
+      setAccordionValue('advanced');
+      return;
+    }
+
     try {
       await onSubmit({
         name: name.trim(),
         description: description.trim() || undefined,
-        retrieval_config: retrievalConfig.retriever_name ? retrievalConfig : undefined,
+        retrieval_config: retrievalConfig,
       });
       setName('');
       setDescription('');
@@ -110,6 +137,7 @@ export function CreateKnowledgeBaseDialog({
         },
       });
       setError('');
+      setAccordionValue('');
     }
     onOpenChange(newOpen);
   };
@@ -147,7 +175,13 @@ export function CreateKnowledgeBaseDialog({
             </div>
 
             {/* Advanced Settings */}
-            <Accordion type="single" collapsible className="border-none">
+            <Accordion
+              type="single"
+              collapsible
+              className="border-none"
+              value={accordionValue}
+              onValueChange={setAccordionValue}
+            >
               <AccordionItem value="advanced" className="border-none">
                 <AccordionTrigger className="text-sm font-medium hover:no-underline">
                   {t('knowledge.document.advancedSettings.title')}
