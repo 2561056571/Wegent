@@ -34,7 +34,8 @@ from app.schemas.knowledge import (
 from app.schemas.rag import SplitterConfig
 from app.services.knowledge_service import KnowledgeService
 from app.services.rag.document_service import DocumentService
-from app.services.rag.storage.factory import create_storage_backend_from_retriever
+from app.services.rag.storage.factory import create_storage_backend
+from app.services.adapters.retriever_kinds import retriever_kinds_service
 
 logger = logging.getLogger(__name__)
 
@@ -366,13 +367,21 @@ async def _index_document_async(
         splitter_config: Optional splitter configuration
     """
     try:
-        # Create storage backend from retriever
-        storage_backend = create_storage_backend_from_retriever(
+        # Get retriever from database
+        retriever_crd = retriever_kinds_service.get_retriever(
             db=db,
             user_id=user_id,
-            retriever_name=retriever_name,
-            retriever_namespace=retriever_namespace,
+            name=retriever_name,
+            namespace=retriever_namespace,
         )
+
+        if not retriever_crd:
+            raise ValueError(
+                f"Retriever {retriever_name} (namespace: {retriever_namespace}) not found"
+            )
+
+        # Create storage backend from retriever
+        storage_backend = create_storage_backend(retriever_crd)
 
         # Create document service
         doc_service = DocumentService(storage_backend=storage_backend)
