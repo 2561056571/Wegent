@@ -467,6 +467,37 @@ class SkillList(BaseModel):
 
 
 # KnowledgeBase CRD schemas
+class EmbeddingModelRef(BaseModel):
+    """Reference to an Embedding Model"""
+
+    name: str
+    namespace: str = "default"
+
+
+class HybridWeights(BaseModel):
+    """Hybrid search weights configuration"""
+
+    vectorWeight: float = Field(0.7, ge=0.0, le=1.0, description="Weight for vector search (0.0-1.0)")
+    keywordWeight: float = Field(0.3, ge=0.0, le=1.0, description="Weight for keyword search (0.0-1.0)")
+
+    def model_post_init(self, __context):
+        """Validate that weights sum to 1.0"""
+        total = self.vectorWeight + self.keywordWeight
+        if not (0.99 <= total <= 1.01):  # Allow small floating point errors
+            raise ValueError(f"Weights must sum to 1.0, got {total}")
+
+
+class RetrievalConfig(BaseModel):
+    """Retrieval configuration for knowledge base"""
+
+    retrieverRef: RetrieverRef
+    embeddingModelRef: EmbeddingModelRef
+    retrievalMode: str = Field("vector", description="Retrieval mode: 'vector', 'keyword', or 'hybrid'")
+    topK: int = Field(5, ge=1, le=10)
+    scoreThreshold: float = Field(0.7, ge=0.0, le=1.0)
+    hybridWeights: Optional[HybridWeights] = None
+
+
 class KnowledgeBaseSpec(BaseModel):
     """KnowledgeBase specification"""
 
@@ -475,6 +506,7 @@ class KnowledgeBaseSpec(BaseModel):
     document_count: Optional[int] = Field(
         default=0, description="Cached document count"
     )
+    retrievalConfig: Optional[RetrievalConfig] = Field(None, description="Retrieval configuration")
 
 
 class KnowledgeBaseStatus(Status):

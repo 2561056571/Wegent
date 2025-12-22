@@ -31,12 +31,41 @@ class ResourceScope(str, Enum):
 # ============== Knowledge Base Schemas ==============
 
 
+class RetrieverRef(BaseModel):
+    """Reference to a Retriever"""
+    name: str
+    namespace: str = "default"
+
+
+class EmbeddingModelRef(BaseModel):
+    """Reference to an Embedding Model"""
+    name: str
+    namespace: str = "default"
+
+
+class HybridWeights(BaseModel):
+    """Hybrid search weights configuration"""
+    vectorWeight: float = Field(0.7, ge=0.0, le=1.0)
+    keywordWeight: float = Field(0.3, ge=0.0, le=1.0)
+
+
+class RetrievalConfig(BaseModel):
+    """Retrieval configuration for knowledge base"""
+    retrieverRef: RetrieverRef
+    embeddingModelRef: EmbeddingModelRef
+    retrievalMode: str = Field("vector", description="Retrieval mode: 'vector', 'keyword', or 'hybrid'")
+    topK: int = Field(5, ge=1, le=10)
+    scoreThreshold: float = Field(0.7, ge=0.0, le=1.0)
+    hybridWeights: Optional[HybridWeights] = None
+
+
 class KnowledgeBaseCreate(BaseModel):
     """Schema for creating a knowledge base."""
 
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
     namespace: str = Field(default="default", max_length=255)
+    retrievalConfig: Optional[RetrievalConfig] = None
 
 
 class KnowledgeBaseUpdate(BaseModel):
@@ -56,6 +85,7 @@ class KnowledgeBaseResponse(BaseModel):
     namespace: str
     document_count: int
     is_active: bool
+    retrievalConfig: Optional[RetrievalConfig] = None
     created_at: datetime
     updated_at: datetime
 
@@ -70,6 +100,7 @@ class KnowledgeBaseResponse(BaseModel):
             user_id=kind.user_id,
             namespace=kind.namespace,
             document_count=spec.get("document_count", 0),
+            retrievalConfig=spec.get("retrievalConfig"),
             is_active=kind.is_active,
             created_at=kind.created_at,
             updated_at=kind.updated_at,
@@ -89,6 +120,14 @@ class KnowledgeBaseListResponse(BaseModel):
 # ============== Knowledge Document Schemas ==============
 
 
+class SplitterConfig(BaseModel):
+    """Schema for document splitter configuration."""
+    type: str = Field("sentence", description="Splitter type (currently only 'sentence')")
+    separator: str = Field("\n\n", description="Character(s) used to split document")
+    chunk_size: int = Field(1024, ge=128, le=8192, description="Max chunk size in characters")
+    chunk_overlap: int = Field(50, ge=0, description="Overlap characters between chunks")
+
+
 class KnowledgeDocumentCreate(BaseModel):
     """Schema for creating a knowledge document."""
 
@@ -96,6 +135,7 @@ class KnowledgeDocumentCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     file_extension: str = Field(..., max_length=50)
     file_size: int = Field(..., ge=0)
+    splitter_config: Optional[SplitterConfig] = None
 
 
 class KnowledgeDocumentUpdate(BaseModel):
@@ -117,6 +157,7 @@ class KnowledgeDocumentResponse(BaseModel):
     status: DocumentStatus
     user_id: int
     is_active: bool
+    splitter_config: Optional[SplitterConfig] = None
     created_at: datetime
     updated_at: datetime
 

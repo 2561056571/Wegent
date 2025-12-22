@@ -178,4 +178,13 @@ export const retrieverApis = {
       `/retrievers/storage-types/${encodeURIComponent(storageType)}/retrieval-methods`
     );
   },
+
+  /**
+   * Get embedding models (filter models by modelType=embedding)
+   */
+  async getEmbeddingModels(): Promise<any[]> {
+    const response = await apiClient.get('/models/unified');
+    const models = response?.data || [];
+    return models.filter((model: any) => model.modelType === 'embedding');
+  },
 };
