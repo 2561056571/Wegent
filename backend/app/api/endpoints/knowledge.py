@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db
+from app.db.session import SessionLocal
 from app.core import security
 from app.models.user import User
 from app.schemas.knowledge import (
@@ -131,10 +132,9 @@ def create_knowledge_base(
             user_id=current_user.id,
             data=data,
         )
-        # Close current transaction and start a new one to see committed data
-        # This is needed because KindServiceFactory uses its own session and commits
-        db.commit()  # Commit any pending changes in current session
-        # Fetch the created knowledge base using a fresh query
+        # Commit the transaction to persist the knowledge base
+        db.commit()
+        # Fetch the created knowledge base
         knowledge_base = KnowledgeService.get_knowledge_base(
             db=db,
             knowledge_base_id=kb_id,
@@ -307,23 +307,23 @@ async def create_document(
             retrieval_config = spec.get("retrievalConfig")
 
             if retrieval_config:
-                # Extract configuration - support both camelCase and snake_case
-                retriever_ref = retrieval_config.get("retrieverRef") or retrieval_config.get("retriever_ref")
-                embedding_model_ref = retrieval_config.get("embeddingModelRef") or retrieval_config.get("embedding_config")
+                # Extract configuration using snake_case format
+                retriever_name = retrieval_config.get("retriever_name")
+                retriever_namespace = retrieval_config.get("retriever_namespace", "default")
+                embedding_config = retrieval_config.get("embedding_config")
 
-                if retriever_ref and embedding_model_ref:
-                    # Extract retriever info
-                    retriever_name = retriever_ref.get("name")
-                    retriever_namespace = retriever_ref.get("namespace", "default")
-
-                    # Extract embedding model info - support both formats
-                    embedding_model_name = embedding_model_ref.get("name") or embedding_model_ref.get("model_name")
-                    embedding_model_namespace = embedding_model_ref.get("namespace", "default") or embedding_model_ref.get("model_namespace", "default")
+                if retriever_name and embedding_config:
+                    # Extract embedding model info
+                    embedding_model_name = embedding_config.get("model_name")
+                    embedding_model_namespace = embedding_config.get("model_namespace", "default")
 
                     # Schedule RAG indexing in background
+                    # Note: We use a synchronous function that creates its own event loop
+                    # because BackgroundTasks runs in a thread pool without an event loop.
+                    # We also don't pass db session because it will be closed
+                    # after the request ends. The background task creates its own session.
                     background_tasks.add_task(
-                        _index_document_async,
-                        db=db,
+                        _index_document_background,
                         knowledge_base_id=str(knowledge_base_id),
                         attachment_id=data.attachment_id,
                         retriever_name=retriever_name,
@@ -338,7 +338,7 @@ async def create_document(
                     )
                 else:
                     logger.warning(
-                        f"Knowledge base {knowledge_base_id} has incomplete retrievalConfig, skipping RAG indexing"
+                        f"Knowledge base {knowledge_base_id} has incomplete retrieval_config, skipping RAG indexing"
                     )
 
         return KnowledgeDocumentResponse.model_validate(document)
@@ -349,8 +349,7 @@ async def create_document(
         )
 
 
-async def _index_document_async(
-    db: Session,
+def _index_document_background(
     knowledge_base_id: str,
     attachment_id: int,
     retriever_name: str,
@@ -363,8 +362,14 @@ async def _index_document_async(
     """
     Background task for RAG document indexing.
 
+    This is a synchronous function that creates its own event loop to run
+    the async indexing code. This is necessary because FastAPI's BackgroundTasks
+    runs tasks in a thread pool, which doesn't have an event loop.
+
+    This function also creates its own database session because the request-scoped
+    session will be closed after the HTTP response is sent.
+
     Args:
-        db: Database session
         knowledge_base_id: Knowledge base ID
         attachment_id: Attachment ID
         retriever_name: Retriever name
@@ -374,6 +379,13 @@ async def _index_document_async(
         user_id: User ID
         splitter_config: Optional splitter configuration
     """
+    logger.info(
+        f"Background task started: indexing document for knowledge base {knowledge_base_id}, "
+        f"attachment {attachment_id}"
+    )
+
+    # Create a new database session for the background task
+    db = SessionLocal()
     try:
         # Get retriever from database
         retriever_crd = retriever_kinds_service.get_retriever(
@@ -388,21 +400,27 @@ async def _index_document_async(
                 f"Retriever {retriever_name} (namespace: {retriever_namespace}) not found"
             )
 
+        logger.info(f"Found retriever: {retriever_name}")
+
         # Create storage backend from retriever
         storage_backend = create_storage_backend(retriever_crd)
+        logger.info(f"Created storage backend: {type(storage_backend).__name__}")
 
         # Create document service
         doc_service = DocumentService(storage_backend=storage_backend)
 
-        # Index document
-        result = await doc_service.index_document(
-            knowledge_id=knowledge_base_id,
-            embedding_model_name=embedding_model_name,
-            embedding_model_namespace=embedding_model_namespace,
-            user_id=user_id,
-            db=db,
-            attachment_id=attachment_id,
-            splitter_config=splitter_config,
+        # Run the async index_document in a new event loop
+        # This is necessary because BackgroundTasks runs in a thread without an event loop
+        result = asyncio.run(
+            doc_service.index_document(
+                knowledge_id=knowledge_base_id,
+                embedding_model_name=embedding_model_name,
+                embedding_model_namespace=embedding_model_namespace,
+                user_id=user_id,
+                db=db,
+                attachment_id=attachment_id,
+                splitter_config=splitter_config,
+            )
         )
 
         logger.info(
@@ -410,9 +428,14 @@ async def _index_document_async(
         )
     except Exception as e:
         logger.error(
-            f"Failed to index document for knowledge base {knowledge_base_id}: {str(e)}"
+            f"Failed to index document for knowledge base {knowledge_base_id}: {str(e)}",
+            exc_info=True,
         )
         # Don't raise exception to avoid blocking document creation
+    finally:
+        # Always close the database session
+        db.close()
+        logger.info(f"Background task completed for knowledge base {knowledge_base_id}")
 
 
 # Document-specific endpoints (without knowledge_base_id in path)

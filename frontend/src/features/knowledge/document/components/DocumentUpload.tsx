@@ -34,7 +34,7 @@ export function DocumentUpload({ open, onOpenChange, onUploadComplete }: Documen
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { state, handleFileSelect, handleRemove, reset } = useAttachment();
   const [splitterConfig, setSplitterConfig] = useState<Partial<SplitterConfig>>({
-    type: 'general',
+    type: 'sentence',
     separator: '\n\n',
     chunk_size: 1024,
     chunk_overlap: 50,
@@ -72,7 +72,7 @@ export function DocumentUpload({ open, onOpenChange, onUploadComplete }: Documen
         reset();
         // Reset splitter config to defaults
         setSplitterConfig({
-          type: 'general',
+          type: 'sentence',
           separator: '\n\n',
           chunk_size: 1024,
           chunk_overlap: 50,
@@ -87,7 +87,7 @@ export function DocumentUpload({ open, onOpenChange, onUploadComplete }: Documen
     reset();
     // Reset splitter config to defaults
     setSplitterConfig({
-      type: 'general',
+      type: 'sentence',
       separator: '\n\n',
       chunk_size: 1024,
       chunk_overlap: 50,

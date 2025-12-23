@@ -70,6 +70,32 @@ export function RetrievalSettingsSection({
     }
   }, [availableModes, config, onChange]);
 
+  // Auto-select first retriever if data exists and no selection
+  useEffect(() => {
+    if (!loadingRetrievers && retrievers.length > 0 && !config.retriever_name) {
+      const firstRetriever = retrievers[0];
+      onChange({
+        ...config,
+        retriever_name: firstRetriever.name,
+        retriever_namespace: firstRetriever.namespace,
+      });
+    }
+  }, [loadingRetrievers, retrievers, config.retriever_name]);
+
+  // Auto-select first embedding model if data exists and no selection
+  useEffect(() => {
+    if (!loadingModels && embeddingModels.length > 0 && !config.embedding_config?.model_name) {
+      const firstModel = embeddingModels[0];
+      onChange({
+        ...config,
+        embedding_config: {
+          model_name: firstModel.name,
+          model_namespace: firstModel.namespace || 'default',
+        },
+      });
+    }
+  }, [loadingModels, embeddingModels, config.embedding_config?.model_name]);
+
   const handleRetrieverChange = (value: string) => {
     const retriever = retrievers.find(r => r.name === value);
     if (retriever) {

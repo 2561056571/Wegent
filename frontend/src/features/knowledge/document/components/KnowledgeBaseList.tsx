@@ -39,12 +39,17 @@ export function KnowledgeBaseList({
   const [deletingKb, setDeletingKb] = useState<KnowledgeBase | null>(null);
   const [selectedKb, setSelectedKb] = useState<KnowledgeBase | null>(null);
 
-  const handleCreate = async (data: { name: string; description?: string }) => {
+  const handleCreate = async (data: {
+    name: string;
+    description?: string;
+    retrieval_config?: Parameters<typeof create>[0]['retrieval_config'];
+  }) => {
     try {
       await create({
         name: data.name,
         description: data.description,
         namespace: scope === 'group' && groupName ? groupName : 'default',
+        retrieval_config: data.retrieval_config,
       });
       setShowCreateDialog(false);
     } catch {
@@ -153,6 +158,8 @@ export function KnowledgeBaseList({
         onOpenChange={setShowCreateDialog}
         onSubmit={handleCreate}
         loading={loading}
+        scope={scope}
+        groupName={groupName}
       />
 
       <EditKnowledgeBaseDialog

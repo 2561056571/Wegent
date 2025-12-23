@@ -123,11 +123,16 @@ export function KnowledgeDocumentPage() {
     setShowCreateDialog(true);
   };
 
-  const handleCreate = async (data: { name: string; description?: string }) => {
+  const handleCreate = async (data: {
+    name: string;
+    description?: string;
+    retrieval_config?: Parameters<typeof personalKb.create>[0]['retrieval_config'];
+  }) => {
     await personalKb.create({
       name: data.name,
       description: data.description,
       namespace: createForGroup || 'default',
+      retrieval_config: data.retrieval_config,
     });
     setShowCreateDialog(false);
     // Refresh the appropriate list based on whether it's a group or personal knowledge base
@@ -241,6 +246,8 @@ export function KnowledgeDocumentPage() {
         }}
         onSubmit={handleCreate}
         loading={personalKb.loading}
+        scope={createForGroup ? 'group' : 'personal'}
+        groupName={createForGroup || undefined}
       />
 
       <EditKnowledgeBaseDialog

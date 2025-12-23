@@ -35,7 +35,6 @@ from app.services.group_permission import (
     get_effective_role_in_group,
     get_user_groups,
 )
-from app.services.kind_factory import KindServiceFactory
 
 
 class KnowledgeService:
@@ -63,6 +62,8 @@ class KnowledgeService:
         Raises:
             ValueError: If validation fails or permission denied
         """
+        from datetime import datetime
+
         # Check permission for team knowledge base
         if data.namespace != "default":
             role = get_effective_role_in_group(db, user_id, data.namespace)
@@ -77,8 +78,29 @@ class KnowledgeService:
                     "Only Owner or Maintainer can create knowledge base in this group"
                 )
 
-        # Check duplicate name
-        existing = (
+        # Generate unique name for the Kind record
+        kb_name = f"kb-{user_id}-{data.namespace}-{data.name}"
+
+        # Check duplicate by Kind.name (unique identifier)
+        existing_by_name = (
+            db.query(Kind)
+            .filter(
+                Kind.kind == "KnowledgeBase",
+                Kind.user_id == user_id,
+                Kind.namespace == data.namespace,
+                Kind.name == kb_name,
+                Kind.is_active == True,
+            )
+            .first()
+        )
+
+        if existing_by_name:
+            raise ValueError(
+                f"Knowledge base with name '{data.name}' already exists"
+            )
+
+        # Also check by display name in spec to prevent duplicates
+        existing_by_display = (
             db.query(Kind)
             .filter(
                 Kind.kind == "KnowledgeBase",
@@ -89,7 +111,7 @@ class KnowledgeService:
             .all()
         )
 
-        for kb in existing:
+        for kb in existing_by_display:
             kb_spec = kb.json.get("spec", {})
             if kb_spec.get("name") == data.name:
                 raise ValueError(
@@ -101,21 +123,37 @@ class KnowledgeService:
             apiVersion="agent.wecode.io/v1",
             kind="KnowledgeBase",
             metadata=ObjectMeta(
-                name=f"kb-{user_id}-{data.namespace}-{data.name}",  # Generate unique name
+                name=kb_name,
                 namespace=data.namespace,
             ),
             spec=KnowledgeBaseSpec(
                 name=data.name,
                 description=data.description or "",
                 document_count=0,
-                retrievalConfig=data.retrievalConfig,  # Include retrievalConfig
+                retrievalConfig=data.retrieval_config,
             ),
         )
 
-        # Use KindServiceFactory to create
-        kind_service = KindServiceFactory.get_service("KnowledgeBase")
-        kb_id = kind_service.create_resource(user_id, kb_crd.model_dump())
-        return kb_id
+        # Build resource data
+        resource_data = kb_crd.model_dump()
+        if "status" not in resource_data or resource_data["status"] is None:
+            resource_data["status"] = {"state": "Available"}
+
+        # Create Kind record directly using the passed db session
+        db_resource = Kind(
+            user_id=user_id,
+            kind="KnowledgeBase",
+            name=kb_name,
+            namespace=data.namespace,
+            json=resource_data,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+
+        db.add(db_resource)
+        db.flush()  # Flush to get the ID without committing
+
+        return db_resource.id
 
     @staticmethod
     def get_knowledge_base(
@@ -528,6 +566,9 @@ class KnowledgeService:
 
         if data.status is not None:
             doc.status = DocumentStatus(data.status.value)
+
+        if data.splitter_config is not None:
+            doc.splitter_config = data.splitter_config.model_dump()
 
         db.commit()
         db.refresh(doc)

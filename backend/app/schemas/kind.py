@@ -470,8 +470,8 @@ class SkillList(BaseModel):
 class EmbeddingModelRef(BaseModel):
     """Reference to an Embedding Model"""
 
-    name: str
-    namespace: str = "default"
+    model_name: str = Field(..., description="Embedding model name")
+    model_namespace: str = Field("default", description="Embedding model namespace")
 
 
 class RetrieverRef(BaseModel):
@@ -484,12 +484,12 @@ class RetrieverRef(BaseModel):
 class HybridWeights(BaseModel):
     """Hybrid search weights configuration"""
 
-    vectorWeight: float = Field(0.7, ge=0.0, le=1.0, description="Weight for vector search (0.0-1.0)")
-    keywordWeight: float = Field(0.3, ge=0.0, le=1.0, description="Weight for keyword search (0.0-1.0)")
+    vector_weight: float = Field(0.7, ge=0.0, le=1.0, description="Weight for vector search (0.0-1.0)")
+    keyword_weight: float = Field(0.3, ge=0.0, le=1.0, description="Weight for keyword search (0.0-1.0)")
 
     def model_post_init(self, __context):
         """Validate that weights sum to 1.0"""
-        total = self.vectorWeight + self.keywordWeight
+        total = self.vector_weight + self.keyword_weight
         if not (0.99 <= total <= 1.01):  # Allow small floating point errors
             raise ValueError(f"Weights must sum to 1.0, got {total}")
 
@@ -497,12 +497,13 @@ class HybridWeights(BaseModel):
 class RetrievalConfig(BaseModel):
     """Retrieval configuration for knowledge base"""
 
-    retrieverRef: RetrieverRef
-    embeddingModelRef: EmbeddingModelRef
-    retrievalMode: str = Field("vector", description="Retrieval mode: 'vector', 'keyword', or 'hybrid'")
-    topK: int = Field(5, ge=1, le=10)
-    scoreThreshold: float = Field(0.7, ge=0.0, le=1.0)
-    hybridWeights: Optional[HybridWeights] = None
+    retriever_name: str = Field(..., description="Retriever name")
+    retriever_namespace: str = Field("default", description="Retriever namespace")
+    embedding_config: EmbeddingModelRef = Field(..., description="Embedding model configuration")
+    retrieval_mode: str = Field("vector", description="Retrieval mode: 'vector', 'keyword', or 'hybrid'")
+    top_k: int = Field(5, ge=1, le=10, description="Number of results to return")
+    score_threshold: float = Field(0.7, ge=0.0, le=1.0, description="Minimum score threshold")
+    hybrid_weights: Optional[HybridWeights] = Field(None, description="Hybrid search weights")
 
 
 class KnowledgeBaseSpec(BaseModel):

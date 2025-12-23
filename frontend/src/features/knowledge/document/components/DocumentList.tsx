@@ -16,6 +16,7 @@ import {
   Trash2,
   ToggleLeft,
   ToggleRight,
+  Target,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -24,6 +25,7 @@ import { DocumentItem } from './DocumentItem';
 import { DocumentUpload } from './DocumentUpload';
 import { DeleteDocumentDialog } from './DeleteDocumentDialog';
 import { EditDocumentDialog } from './EditDocumentDialog';
+import { RetrievalTestDialog } from './RetrievalTestDialog';
 import { useDocuments } from '../hooks/useDocuments';
 import type { KnowledgeBase, KnowledgeDocument } from '@/types/knowledge';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -58,6 +60,7 @@ export function DocumentList({ knowledgeBase, onBack, canManage = true }: Docume
   const showLoadError = error && documents.length === 0;
 
   const [showUpload, setShowUpload] = useState(false);
+  const [showRetrievalTest, setShowRetrievalTest] = useState(false);
   const [editingDoc, setEditingDoc] = useState<KnowledgeDocument | null>(null);
   const [deletingDoc, setDeletingDoc] = useState<KnowledgeDocument | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -119,7 +122,16 @@ export function DocumentList({ knowledgeBase, onBack, canManage = true }: Docume
     );
   };
 
-  const handleUploadComplete = async (attachmentId: number, file: File) => {
+  const handleUploadComplete = async (
+    attachmentId: number,
+    file: File,
+    splitterConfig?: {
+      type?: 'sentence';
+      separator?: string;
+      chunk_size?: number;
+      chunk_overlap?: number;
+    }
+  ) => {
     const extension = file.name.split('.').pop() || '';
     try {
       await create({
@@ -127,6 +139,7 @@ export function DocumentList({ knowledgeBase, onBack, canManage = true }: Docume
         name: file.name,
         file_extension: extension,
         file_size: file.size,
+        splitter_config: splitterConfig,
       });
       setShowUpload(false);
     } catch {
@@ -271,9 +284,14 @@ export function DocumentList({ knowledgeBase, onBack, canManage = true }: Docume
             onChange={e => setSearchQuery(e.target.value)}
           />
         </div>
-
-        {/* Spacer to push upload button to the right */}
+        {/* Spacer to push buttons to the right */}
         <div className="flex-1" />
+
+        {/* Retrieval test button */}
+        <Button variant="outline" size="sm" onClick={() => setShowRetrievalTest(true)}>
+          <Target className="w-4 h-4 mr-1" />
+          {t('knowledge.document.retrievalTest.button')}
+        </Button>
 
         {/* Upload button - right aligned */}
         {canManage && (
@@ -453,6 +471,12 @@ export function DocumentList({ knowledgeBase, onBack, canManage = true }: Docume
         document={deletingDoc}
         onConfirm={handleDelete}
         loading={loading}
+      />
+
+      <RetrievalTestDialog
+        open={showRetrievalTest}
+        onOpenChange={setShowRetrievalTest}
+        knowledgeBase={knowledgeBase}
       />
     </div>
   );

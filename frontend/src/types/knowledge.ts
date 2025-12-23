@@ -27,12 +27,12 @@ export interface RetrievalConfig {
   };
 }
 
-// Splitter Config types
+// Splitter Config types (sentence splitter only)
 export interface SplitterConfig {
-  type: string;
-  separator: string;
-  chunk_size: number;
-  chunk_overlap: number;
+  type: 'sentence';
+  separator?: string;
+  chunk_size?: number;
+  chunk_overlap?: number;
 }
 
 // Knowledge Base types
@@ -53,6 +53,7 @@ export interface KnowledgeBaseCreate {
   name: string;
   description?: string;
   namespace?: string;
+  retrieval_config?: Partial<RetrievalConfig>;
 }
 
 export interface KnowledgeBaseUpdate {
@@ -86,11 +87,13 @@ export interface KnowledgeDocumentCreate {
   name: string;
   file_extension: string;
   file_size: number;
+  splitter_config?: Partial<SplitterConfig>;
 }
 
 export interface KnowledgeDocumentUpdate {
   name?: string;
   status?: DocumentStatus;
+  splitter_config?: Partial<SplitterConfig>;
 }
 
 export interface KnowledgeDocumentListResponse {

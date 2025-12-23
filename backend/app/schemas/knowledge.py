@@ -12,6 +12,17 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+# Import shared types from kind.py to avoid duplication
+from app.schemas.kind import (
+    EmbeddingModelRef,
+    HybridWeights,
+    RetrievalConfig,
+    RetrieverRef,
+)
+
+# Import SplitterConfig from rag.py to use unified splitter configuration
+from app.schemas.rag import SplitterConfig
+
 
 class DocumentStatus(str, Enum):
     """Document status enumeration."""
@@ -29,47 +40,8 @@ class ResourceScope(str, Enum):
 
 
 # ============== Knowledge Base Schemas ==============
-
-
-class RetrieverRef(BaseModel):
-    """Reference to a Retriever"""
-
-    name: str
-    namespace: str = "default"
-
-
-class EmbeddingModelRef(BaseModel):
-    """Reference to an Embedding Model"""
-
-    name: str = Field(..., alias="model_name")
-    namespace: str = Field("default", alias="model_namespace")
-
-    class Config:
-        populate_by_name = True  # Allow both field name and alias
-
-
-class HybridWeights(BaseModel):
-    """Hybrid search weights configuration"""
-
-    vectorWeight: float = Field(0.7, ge=0.0, le=1.0, alias="vector_weight")
-    keywordWeight: float = Field(0.3, ge=0.0, le=1.0, alias="keyword_weight")
-
-    class Config:
-        populate_by_name = True
-
-
-class RetrievalConfig(BaseModel):
-    """Retrieval configuration for knowledge base"""
-
-    retrieverRef: RetrieverRef = Field(..., alias="retriever_ref")
-    embeddingModelRef: EmbeddingModelRef = Field(..., alias="embedding_config")
-    retrievalMode: str = Field("vector", description="Retrieval mode: 'vector', 'keyword', or 'hybrid'", alias="retrieval_mode")
-    topK: int = Field(5, ge=1, le=10, alias="top_k")
-    scoreThreshold: float = Field(0.7, ge=0.0, le=1.0, alias="score_threshold")
-    hybridWeights: Optional[HybridWeights] = Field(None, alias="hybrid_weights")
-
-    class Config:
-        populate_by_name = True
+# Note: RetrieverRef, EmbeddingModelRef, HybridWeights, RetrievalConfig
+# are imported from app.schemas.kind to maintain single source of truth
 
 
 class KnowledgeBaseCreate(BaseModel):
@@ -78,7 +50,7 @@ class KnowledgeBaseCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
     namespace: str = Field(default="default", max_length=255)
-    retrievalConfig: Optional[RetrievalConfig] = None
+    retrieval_config: Optional[RetrievalConfig] = Field(None, description="Retrieval configuration")
 
 
 class KnowledgeBaseUpdate(BaseModel):
@@ -98,7 +70,7 @@ class KnowledgeBaseResponse(BaseModel):
     namespace: str
     document_count: int
     is_active: bool
-    retrievalConfig: Optional[RetrievalConfig] = Field(None, alias="retrieval_config")
+    retrieval_config: Optional[RetrievalConfig] = Field(None, description="Retrieval configuration")
     created_at: datetime
     updated_at: datetime
 
@@ -113,7 +85,7 @@ class KnowledgeBaseResponse(BaseModel):
             user_id=kind.user_id,
             namespace=kind.namespace,
             document_count=spec.get("document_count", 0),
-            retrievalConfig=spec.get("retrievalConfig"),
+            retrieval_config=spec.get("retrievalConfig"),
             is_active=kind.is_active,
             created_at=kind.created_at,
             updated_at=kind.updated_at,
@@ -121,9 +93,6 @@ class KnowledgeBaseResponse(BaseModel):
 
     class Config:
         from_attributes = True
-        populate_by_name = True
-        # Serialize using alias (snake_case) for frontend
-        by_alias = True
 
 
 class KnowledgeBaseListResponse(BaseModel):
@@ -134,14 +103,7 @@ class KnowledgeBaseListResponse(BaseModel):
 
 
 # ============== Knowledge Document Schemas ==============
-
-
-class SplitterConfig(BaseModel):
-    """Schema for document splitter configuration."""
-    type: str = Field("sentence", description="Splitter type (currently only 'sentence')")
-    separator: str = Field("\n\n", description="Character(s) used to split document")
-    chunk_size: int = Field(1024, ge=128, le=8192, description="Max chunk size in characters")
-    chunk_overlap: int = Field(50, ge=0, description="Overlap characters between chunks")
+# Note: SplitterConfig is imported from app.schemas.rag to use unified splitter configuration
 
 
 class KnowledgeDocumentCreate(BaseModel):
@@ -159,6 +121,7 @@ class KnowledgeDocumentUpdate(BaseModel):
 
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     status: Optional[DocumentStatus] = None
+    splitter_config: Optional[SplitterConfig] = Field(None, description="Splitter configuration for document chunking")
 
 
 class KnowledgeDocumentResponse(BaseModel):

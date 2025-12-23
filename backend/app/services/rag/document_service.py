@@ -8,17 +8,13 @@ Refactored to use modular architecture with pluggable storage backends.
 """
 
 import asyncio
-import os
-import tempfile
 import uuid
 from typing import Dict, Optional
 
 from sqlalchemy.orm import Session
 
-from app.models.subtask_attachment import SubtaskAttachment
+from app.models.subtask_attachment import AttachmentStatus, SubtaskAttachment
 from app.schemas.rag import SplitterConfig
-from app.services.attachment.storage_factory import \
-    get_storage_backend as get_attachment_storage
 from app.services.rag.embedding.factory import create_embedding_model_from_crd
 from app.services.rag.index import DocumentIndexer
 from app.services.rag.storage.base import BaseStorageBackend
@@ -39,41 +35,48 @@ class DocumentService:
         """
         self.storage_backend = storage_backend
 
-    def _get_file_from_attachment(
+    def _get_attachment_text(
         self, db: Session, attachment_id: int
-    ) -> tuple[bytes, str]:
+    ) -> tuple[str, str]:
         """
-        Get file content and filename from attachment.
+        Get extracted text content and filename from attachment.
+
+        The text content was already extracted during attachment upload,
+        so we can directly use it without re-parsing the file.
 
         Args:
             db: Database session
             attachment_id: Attachment ID
 
         Returns:
-            Tuple of (file_content, filename)
+            Tuple of (extracted_text, filename)
 
         Raises:
-            ValueError: If attachment not found
+            ValueError: If attachment not found or has no extracted text
         """
         # Query attachment
         attachment = (
             db.query(SubtaskAttachment)
-            .filter(
-                SubtaskAttachment.id == attachment_id, SubtaskAttachment.is_active == True
-            )
+            .filter(SubtaskAttachment.id == attachment_id)
             .first()
         )
 
         if not attachment:
             raise ValueError(f"Attachment {attachment_id} not found")
 
-        # Get storage backend
-        storage = get_attachment_storage(db)
+        # Check attachment status
+        if attachment.status != AttachmentStatus.READY:
+            raise ValueError(
+                f"Attachment {attachment_id} is not ready (status: {attachment.status})"
+            )
 
-        # Download file content
-        file_content = storage.download(attachment)
+        # Get extracted text content
+        if not attachment.extracted_text:
+            raise ValueError(
+                f"Attachment {attachment_id} has no extracted text content"
+            )
 
-        return file_content, attachment.original_filename
+        return attachment.extracted_text, attachment.original_filename
 
     def _index_document_sync(
         self,
@@ -109,50 +112,43 @@ class DocumentService:
         # Generate document reference ID
         doc_ref = f"doc_{uuid.uuid4().hex[:12]}"
 
-        # Get file path (either provided or from attachment)
-        temp_file = None
-        effective_file_path = file_path
+        # Create embedding model from CRD
+        embed_model = create_embedding_model_from_crd(
+            db=db,
+            user_id=user_id,
+            model_name=embedding_model_name,
+            model_namespace=embedding_model_namespace,
+        )
+
+        # Create indexer with storage backend and splitter config
+        indexer = DocumentIndexer(
+            storage_backend=self.storage_backend,
+            embed_model=embed_model,
+            splitter_config=splitter_config,
+        )
 
         if attachment_id is not None:
-            # Get file from attachment
-            file_content, filename = self._get_file_from_attachment(db, attachment_id)
+            # Get pre-extracted text from attachment (no temp file needed)
+            text_content, filename = self._get_attachment_text(db, attachment_id)
 
-            # Create temporary file
-            _, ext = os.path.splitext(filename)
-            temp_file = tempfile.NamedTemporaryFile(mode="wb", suffix=ext, delete=False)
-            temp_file.write(file_content)
-            temp_file.close()
-            effective_file_path = temp_file.name
-
-        try:
-            # Create embedding model from CRD
-            embed_model = create_embedding_model_from_crd(
-                db=db,
+            # Index from text directly
+            result = indexer.index_from_text(
+                knowledge_id=knowledge_id,
+                text_content=text_content,
+                source_file=filename,
+                doc_ref=doc_ref,
                 user_id=user_id,
-                model_name=embedding_model_name,
-                model_namespace=embedding_model_namespace,
             )
-
-            # Create indexer with storage backend and splitter config
-            indexer = DocumentIndexer(
-                storage_backend=self.storage_backend,
-                embed_model=embed_model,
-                splitter_config=splitter_config,
-            )
-
-            # Index document (synchronous operation, pass user_id)
+        else:
+            # Index from file path
             result = indexer.index_document(
                 knowledge_id=knowledge_id,
-                file_path=effective_file_path,
+                file_path=file_path,
                 doc_ref=doc_ref,
                 user_id=user_id,
             )
 
-            return result
-        finally:
-            # Clean up temporary file if created
-            if temp_file and os.path.exists(temp_file.name):
-                os.unlink(temp_file.name)
+        return result
 
     async def index_document(
         self,

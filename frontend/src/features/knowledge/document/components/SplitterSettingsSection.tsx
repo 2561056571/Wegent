@@ -9,13 +9,10 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useTranslation } from '@/hooks/useTranslation';
+import type { SplitterConfig } from '@/types/knowledge';
 
-export interface SplitterConfig {
-  type: string;
-  separator?: string;
-  chunk_size?: number;
-  chunk_overlap?: number;
-}
+// Re-export SplitterConfig for backward compatibility
+export type { SplitterConfig };
 
 interface SplitterSettingsSectionProps {
   config: Partial<SplitterConfig>;
@@ -58,10 +55,10 @@ export function SplitterSettingsSection({
       <div className="space-y-2">
         <Label htmlFor="splitter-type">{t('knowledge.document.splitter.type')}</Label>
         <SearchableSelect
-          value={config.type || 'general'}
-          onValueChange={value => onChange({ ...config, type: value })}
+          value={config.type || 'sentence'}
+          onValueChange={value => onChange({ ...config, type: value as 'sentence' })}
           disabled={readOnly}
-          items={[{ value: 'general', label: t('knowledge.document.splitter.general') }]}
+          items={[{ value: 'sentence', label: t('knowledge.document.splitter.general') }]}
         />
       </div>
 
