@@ -809,7 +809,8 @@
         "documentCount": "文档数量",
         "empty": "暂无知识库",
         "confirmDelete": "确定要删除这个知识库吗？删除后无法恢复。",
-        "deleteWarning": "这将同时删除该知识库中的 {{count}} 个文档。",
+        "cannotDeleteWithDocuments": "该知识库包含文档，无法删除。请先删除所有文档。",
+        "deleteWarning": "该知识库包含 {{count}} 个文档，请先删除所有文档后再删除知识库。",
         "search": "搜索知识库...",
         "noResults": "没有匹配的知识库"
       },

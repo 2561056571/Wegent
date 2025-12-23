@@ -144,7 +144,7 @@ export function KnowledgeDocumentPage() {
     setCreateForGroup(null);
   };
 
-  const handleUpdate = async (data: { name: string; description?: string }) => {
+  const handleUpdate = async (data: Parameters<typeof personalKb.update>[1]) => {
     if (!editingKb) return;
     await personalKb.update(editingKb.id, data);
     setEditingKb(null);

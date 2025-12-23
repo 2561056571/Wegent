@@ -53,11 +53,21 @@ class KnowledgeBaseCreate(BaseModel):
     retrieval_config: Optional[RetrievalConfig] = Field(None, description="Retrieval configuration")
 
 
+class RetrievalConfigUpdate(BaseModel):
+    """Schema for updating retrieval configuration (excluding retriever and embedding model)."""
+
+    retrieval_mode: Optional[str] = Field(None, description="Retrieval mode: 'vector', 'keyword', or 'hybrid'")
+    top_k: Optional[int] = Field(None, ge=1, le=10, description="Number of results to return")
+    score_threshold: Optional[float] = Field(None, ge=0.0, le=1.0, description="Minimum score threshold")
+    hybrid_weights: Optional[HybridWeights] = Field(None, description="Hybrid search weights")
+
+
 class KnowledgeBaseUpdate(BaseModel):
     """Schema for updating a knowledge base."""
 
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
+    retrieval_config: Optional[RetrievalConfigUpdate] = Field(None, description="Retrieval configuration update (excludes retriever and embedding model)")
 
 
 class KnowledgeBaseResponse(BaseModel):
@@ -75,8 +85,13 @@ class KnowledgeBaseResponse(BaseModel):
     updated_at: datetime
 
     @classmethod
-    def from_kind(cls, kind):
-        """Create response from Kind object"""
+    def from_kind(cls, kind, document_count: int = 0):
+        """Create response from Kind object
+
+        Args:
+            kind: Kind object
+            document_count: Document count (should be queried from database)
+        """
         spec = kind.json.get("spec", {})
         return cls(
             id=kind.id,
@@ -84,7 +99,7 @@ class KnowledgeBaseResponse(BaseModel):
             description=spec.get("description"),
             user_id=kind.user_id,
             namespace=kind.namespace,
-            document_count=spec.get("document_count", 0),
+            document_count=document_count,
             retrieval_config=spec.get("retrievalConfig"),
             is_active=kind.is_active,
             created_at=kind.created_at,

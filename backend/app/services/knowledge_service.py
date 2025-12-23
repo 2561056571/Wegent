@@ -9,6 +9,7 @@ Knowledge base and document service using kinds table.
 from typing import Optional
 
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.models.kind import Kind
 from app.models.knowledge import (
@@ -129,7 +130,6 @@ class KnowledgeService:
             spec=KnowledgeBaseSpec(
                 name=data.name,
                 description=data.description or "",
-                document_count=0,
                 retrievalConfig=data.retrieval_config,
             ),
         )
@@ -344,8 +344,25 @@ class KnowledgeService:
         if data.description is not None:
             spec["description"] = data.description
 
+        # Update retrieval config if provided (only allowed fields)
+        if data.retrieval_config is not None:
+            current_retrieval_config = spec.get("retrievalConfig", {})
+            if current_retrieval_config:
+                # Only update allowed fields, keep retriever and embedding_config unchanged
+                if data.retrieval_config.retrieval_mode is not None:
+                    current_retrieval_config["retrieval_mode"] = data.retrieval_config.retrieval_mode
+                if data.retrieval_config.top_k is not None:
+                    current_retrieval_config["top_k"] = data.retrieval_config.top_k
+                if data.retrieval_config.score_threshold is not None:
+                    current_retrieval_config["score_threshold"] = data.retrieval_config.score_threshold
+                if data.retrieval_config.hybrid_weights is not None:
+                    current_retrieval_config["hybrid_weights"] = data.retrieval_config.hybrid_weights.model_dump()
+                spec["retrievalConfig"] = current_retrieval_config
+
         kb_json["spec"] = spec
         kb.json = kb_json
+        # Mark JSON field as modified so SQLAlchemy detects the change
+        flag_modified(kb, "json")
 
         db.commit()
         db.refresh(kb)
@@ -358,7 +375,7 @@ class KnowledgeService:
         user_id: int,
     ) -> bool:
         """
-        Physically delete a knowledge base and its documents.
+        Delete a knowledge base.
 
         Args:
             db: Database session
@@ -384,15 +401,37 @@ class KnowledgeService:
                     "Only Owner or Maintainer can delete knowledge base in this group"
                 )
 
-        # Physically delete all documents in this knowledge base
-        db.query(KnowledgeDocument).filter(
-            KnowledgeDocument.kind_id == knowledge_base_id,
-        ).delete()
-
         # Physically delete the knowledge base
         db.delete(kb)
         db.commit()
         return True
+
+    @staticmethod
+    def get_document_count(
+        db: Session,
+        knowledge_base_id: int,
+    ) -> int:
+        """
+        Get the document count for a knowledge base.
+
+        Args:
+            db: Database session
+            knowledge_base_id: Knowledge base ID
+
+        Returns:
+            Number of active documents in the knowledge base
+        """
+        from sqlalchemy import func
+
+        return (
+            db.query(func.count(KnowledgeDocument.id))
+            .filter(
+                KnowledgeDocument.kind_id == knowledge_base_id,
+                KnowledgeDocument.is_active == True,
+            )
+            .scalar()
+            or 0
+        )
 
     # ============== Knowledge Document Operations ==============
 
@@ -441,13 +480,6 @@ class KnowledgeService:
             splitter_config=data.splitter_config.model_dump() if data.splitter_config else None,  # Save splitter_config
         )
         db.add(document)
-
-        # Update document count in Kind spec
-        kb_json = kb.json
-        spec = kb_json.get("spec", {})
-        spec["document_count"] = spec.get("document_count", 0) + 1
-        kb_json["spec"] = spec
-        kb.json = kb_json
 
         db.commit()
         db.refresh(document)
@@ -612,14 +644,6 @@ class KnowledgeService:
                     "Only Owner or Maintainer can delete documents from this knowledge base"
                 )
 
-        # Update document count
-        if kb:
-            kb_json = kb.json
-            spec = kb_json.get("spec", {})
-            spec["document_count"] = max(0, spec.get("document_count", 0) - 1)
-            kb_json["spec"] = spec
-            kb.json = kb_json
-
         # Physically delete document
         db.delete(doc)
         db.commit()
@@ -660,7 +684,7 @@ class KnowledgeService:
                 id=kb.id,
                 name=kb.json.get("spec", {}).get("name", ""),
                 description=kb.json.get("spec", {}).get("description"),
-                document_count=kb.json.get("spec", {}).get("document_count", 0),
+                document_count=KnowledgeService.get_document_count(db, kb.id),
                 updated_at=kb.updated_at,
             )
             for kb in personal_kbs
@@ -704,9 +728,7 @@ class KnowledgeService:
                                 id=kb.id,
                                 name=kb.json.get("spec", {}).get("name", ""),
                                 description=kb.json.get("spec", {}).get("description"),
-                                document_count=kb.json.get("spec", {}).get(
-                                    "document_count", 0
-                                ),
+                                document_count=KnowledgeService.get_document_count(db, kb.id),
                                 updated_at=kb.updated_at,
                             )
                             for kb in group_kbs

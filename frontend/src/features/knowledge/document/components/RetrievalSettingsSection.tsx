@@ -35,6 +35,7 @@ interface RetrievalSettingsSectionProps {
   config: Partial<RetrievalConfig>;
   onChange: (config: Partial<RetrievalConfig>) => void;
   readOnly?: boolean;
+  partialReadOnly?: boolean; // When true, only retriever and embedding model are read-only
   scope?: 'personal' | 'group' | 'all';
   groupName?: string;
 }
@@ -43,6 +44,7 @@ export function RetrievalSettingsSection({
   config,
   onChange,
   readOnly = false,
+  partialReadOnly = false,
   scope,
   groupName,
 }: RetrievalSettingsSectionProps) {
@@ -160,6 +162,13 @@ export function RetrievalSettingsSection({
     [config, onChange]
   );
 
+  // Determine if retriever and embedding model should be disabled
+  // They are disabled when readOnly is true OR when partialReadOnly is true
+  const isRetrieverDisabled = readOnly || partialReadOnly;
+  const isEmbeddingDisabled = readOnly || partialReadOnly;
+  // Other settings are only disabled when readOnly is true (not partialReadOnly)
+  const isOtherSettingsDisabled = readOnly;
+
   return (
     <div className="space-y-4">
       {/* Retriever Selection */}
@@ -180,7 +189,7 @@ export function RetrievalSettingsSection({
               value={config.retriever_name || ''}
               onValueChange={handleRetrieverChange}
               placeholder={t('knowledge.document.retrieval.retrieverSelect')}
-              disabled={readOnly}
+              disabled={isRetrieverDisabled}
               items={retrievers.map(retriever => ({
                 value: retriever.name,
                 label: retriever.displayName || retriever.name,
@@ -213,7 +222,7 @@ export function RetrievalSettingsSection({
               value={config.embedding_config?.model_name || ''}
               onValueChange={handleEmbeddingModelChange}
               placeholder={t('knowledge.document.retrieval.embeddingModelSelect')}
-              disabled={readOnly}
+              disabled={isEmbeddingDisabled}
               items={embeddingModels.map(model => ({
                 value: model.name,
                 label: model.displayName || model.name,
@@ -232,7 +241,7 @@ export function RetrievalSettingsSection({
         <RadioGroup
           value={config.retrieval_mode || 'vector'}
           onValueChange={handleRetrievalModeChange}
-          disabled={readOnly}
+          disabled={isOtherSettingsDisabled}
         >
           {availableModes.includes('vector') && (
             <div className="flex items-center space-x-2">
@@ -274,7 +283,7 @@ export function RetrievalSettingsSection({
           min={1}
           max={10}
           step={1}
-          disabled={readOnly}
+          disabled={isOtherSettingsDisabled}
         />
         <p className="text-xs text-text-muted">{t('knowledge.document.retrieval.topKHint')}</p>
       </div>
@@ -296,7 +305,7 @@ export function RetrievalSettingsSection({
           min={0}
           max={1}
           step={0.05}
-          disabled={readOnly}
+          disabled={isOtherSettingsDisabled}
         />
         <p className="text-xs text-text-muted">
           {t('knowledge.document.retrieval.scoreThresholdHint')}
@@ -312,7 +321,7 @@ export function RetrievalSettingsSection({
             onChange={handleWeightChange}
             leftLabel={t('knowledge.document.retrieval.semanticWeight')}
             rightLabel={t('knowledge.document.retrieval.keywordWeight')}
-            disabled={readOnly}
+            disabled={isOtherSettingsDisabled}
           />
           <p className="text-xs text-text-muted">{t('knowledge.document.retrieval.weightSum')}</p>
         </div>

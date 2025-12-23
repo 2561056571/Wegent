@@ -56,9 +56,20 @@ export interface KnowledgeBaseCreate {
   retrieval_config?: Partial<RetrievalConfig>;
 }
 
+export interface RetrievalConfigUpdate {
+  retrieval_mode?: 'vector' | 'keyword' | 'hybrid';
+  top_k?: number;
+  score_threshold?: number;
+  hybrid_weights?: {
+    vector_weight: number;
+    keyword_weight: number;
+  };
+}
+
 export interface KnowledgeBaseUpdate {
   name?: string;
   description?: string;
+  retrieval_config?: RetrievalConfigUpdate;
 }
 
 export interface KnowledgeBaseListResponse {

@@ -57,7 +57,7 @@ export function KnowledgeBaseList({
     }
   };
 
-  const handleUpdate = async (data: { name: string; description?: string }) => {
+  const handleUpdate = async (data: Parameters<typeof update>[1]) => {
     if (!editingKb) return;
     try {
       await update(editingKb.id, data);

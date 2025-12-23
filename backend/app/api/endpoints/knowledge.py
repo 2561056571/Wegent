@@ -86,10 +86,14 @@ def list_knowledge_bases(
         scope=resource_scope,
         group_name=group_name,
     )
-
     return KnowledgeBaseListResponse(
         total=len(knowledge_bases),
-        items=[KnowledgeBaseResponse.from_kind(kb) for kb in knowledge_bases],
+        items=[
+            KnowledgeBaseResponse.from_kind(
+                kb, KnowledgeService.get_document_count(db, kb.id)
+            )
+            for kb in knowledge_bases
+        ],
     )
 
 
@@ -145,7 +149,9 @@ def create_knowledge_base(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to retrieve created knowledge base",
             )
-        return KnowledgeBaseResponse.from_kind(knowledge_base)
+        return KnowledgeBaseResponse.from_kind(
+            knowledge_base, KnowledgeService.get_document_count(db, knowledge_base.id)
+        )
     except IntegrityError:
         db.rollback()
         raise HTTPException(
@@ -178,7 +184,9 @@ def get_knowledge_base(
             detail="Knowledge base not found or access denied",
         )
 
-    return KnowledgeBaseResponse.from_kind(knowledge_base)
+    return KnowledgeBaseResponse.from_kind(
+        knowledge_base, KnowledgeService.get_document_count(db, knowledge_base.id)
+    )
 
 
 @router.put("/{knowledge_base_id}", response_model=KnowledgeBaseResponse)
@@ -203,7 +211,9 @@ def update_knowledge_base(
                 detail="Knowledge base not found or access denied",
             )
 
-        return KnowledgeBaseResponse.from_kind(knowledge_base)
+        return KnowledgeBaseResponse.from_kind(
+            knowledge_base, KnowledgeService.get_document_count(db, knowledge_base.id)
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
