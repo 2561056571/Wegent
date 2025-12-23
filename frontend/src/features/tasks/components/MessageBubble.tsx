@@ -8,8 +8,6 @@ import React, { memo, useState } from 'react';
 import type { TaskDetail, Team, GitRepoInfo, GitBranch, Attachment } from '@/types/api';
 import {
   Bot,
-  Copy,
-  Check,
   Download,
   AlertCircle,
   Loader2,
@@ -29,7 +27,10 @@ import FinalPromptMessage from './FinalPromptMessage';
 import ClarificationAnswerSummary from './ClarificationAnswerSummary';
 import AttachmentPreview from './AttachmentPreview';
 import StreamingWaitIndicator from './StreamingWaitIndicator';
+import BubbleTools, { CopyButton } from './BubbleTools';
 import type { ClarificationData, FinalPromptData, ClarificationAnswer } from '@/types/api';
+import { useTraceAction } from '@/hooks/useTraceAction';
+import { useMessageFeedback } from '@/hooks/useMessageFeedback';
 export interface Message {
   type: 'user' | 'ai';
   content: string;
@@ -64,103 +65,6 @@ export interface Message {
   shouldShowSender?: boolean;
 }
 
-// CopyButton component for copying markdown content
-const CopyButton = ({
-  content,
-  className,
-  tooltip,
-}: {
-  content: string;
-  className?: string;
-  tooltip?: string;
-}) => {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
-      try {
-        await navigator.clipboard.writeText(content);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-        return;
-      } catch (err) {
-        console.error('Failed to copy text: ', err);
-      }
-    }
-
-    try {
-      const textarea = document.createElement('textarea');
-      textarea.value = content;
-      textarea.style.cssText = 'position:fixed;opacity:0';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Fallback copy failed: ', err);
-    }
-  };
-
-  const button = (
-    <Button
-      variant="ghost"
-      size="icon"
-      onClick={handleCopy}
-      className={className ?? 'h-8 w-8 hover:bg-muted'}
-    >
-      {copied ? (
-        <Check className="h-4 w-4 text-green-500" />
-      ) : (
-        <Copy className="h-4 w-4 text-text-muted" />
-      )}
-    </Button>
-  );
-
-  if (tooltip) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>{button}</TooltipTrigger>
-        <TooltipContent>{copied ? 'Copied!' : tooltip}</TooltipContent>
-      </Tooltip>
-    );
-  }
-
-  return button;
-};
-
-// Bubble toolbar: supports copy button and extensible tool buttons
-const BubbleTools = ({
-  contentToCopy,
-  tools = [],
-}: {
-  contentToCopy: string;
-  tools?: Array<{
-    key: string;
-    title: string;
-    icon: React.ReactNode;
-    onClick: () => void;
-  }>;
-}) => {
-  return (
-    <div className="absolute bottom-2 left-2 flex items-center gap-1 z-10">
-      <CopyButton content={contentToCopy} />
-      {tools.map(tool => (
-        <Button
-          key={tool.key}
-          variant="ghost"
-          size="icon"
-          onClick={tool.onClick}
-          title={tool.title}
-          className="h-8 w-8 hover:bg-muted"
-        >
-          {tool.icon}
-        </Button>
-      ))}
-    </div>
-  );
-};
 /** Configuration for paragraph-level action button */
 export interface ParagraphAction {
   /** Icon to display on hover */
@@ -307,6 +211,21 @@ const MessageBubble = memo(
     paragraphAction,
     isCurrentUserMessage,
   }: MessageBubbleProps) {
+    // Use trace hook for telemetry (auto-includes user and task context)
+    const { trace } = useTraceAction();
+
+    // Use feedback hook for managing like/dislike state with localStorage persistence
+    const { feedback, handleLike, handleDislike } = useMessageFeedback({
+      subtaskId: msg.subtaskId,
+      timestamp: msg.timestamp,
+      onFeedbackChange: fb =>
+        trace.event('message-feedback', {
+          'feedback.type': fb ?? 'cancelled',
+          'feedback.message_type': msg.type,
+          ...(msg.subtaskId && { 'subtask.id': msg.subtaskId }),
+        }),
+    });
+
     // Determine if this is a user-type message (for styling purposes)
     const isUserTypeMessage = msg.type === 'user';
 
@@ -540,6 +459,7 @@ const MessageBubble = memo(
           />
           <BubbleTools
             contentToCopy={`${promptPart ? promptPart + '\n\n' : ''}${normalizedResult}`}
+            onCopySuccess={() => trace.copy(msg.type, msg.subtaskId)}
             tools={[
               {
                 key: 'download',
@@ -555,9 +475,17 @@ const MessageBubble = memo(
                   a.download = 'message.md';
                   a.click();
                   URL.revokeObjectURL(url);
+                  trace.download(msg.type, msg.subtaskId);
                 },
               },
             ]}
+            feedback={feedback}
+            onLike={handleLike}
+            onDislike={handleDislike}
+            feedbackLabels={{
+              like: t('messages.like') || 'Like',
+              dislike: t('messages.dislike') || 'Dislike',
+            }}
           />
         </>
       );
@@ -1168,6 +1096,7 @@ const MessageBubble = memo(
             {/* Show copy and download buttons */}
             <BubbleTools
               contentToCopy={contentToRender}
+              onCopySuccess={() => trace.copy(msg.type, msg.subtaskId)}
               tools={[
                 {
                   key: 'download',
@@ -1183,9 +1112,17 @@ const MessageBubble = memo(
                     a.download = 'message.md';
                     a.click();
                     URL.revokeObjectURL(url);
+                    trace.download(msg.type, msg.subtaskId);
                   },
                 },
               ]}
+              feedback={feedback}
+              onLike={handleLike}
+              onDislike={handleDislike}
+              feedbackLabels={{
+                like: t('messages.like') || 'Like',
+                dislike: t('messages.dislike') || 'Dislike',
+              }}
             />
           </div>
         );
@@ -1224,6 +1161,7 @@ const MessageBubble = memo(
               {/* Show copy and download buttons during streaming */}
               <BubbleTools
                 contentToCopy={contentToRender}
+                onCopySuccess={() => trace.copy(msg.type, msg.subtaskId)}
                 tools={[
                   {
                     key: 'download',
@@ -1239,9 +1177,17 @@ const MessageBubble = memo(
                       a.download = 'message.md';
                       a.click();
                       URL.revokeObjectURL(url);
+                      trace.download(msg.type, msg.subtaskId);
                     },
                   },
                 ]}
+                feedback={feedback}
+                onLike={handleLike}
+                onDislike={handleDislike}
+                feedbackLabels={{
+                  like: t('messages.like') || 'Like',
+                  dislike: t('messages.dislike') || 'Dislike',
+                }}
               />
             </>
           ) : (
@@ -1319,6 +1265,7 @@ const MessageBubble = memo(
                   content={msg.content}
                   className="h-6 w-6 hover:bg-muted"
                   tooltip={t('actions.copy') || 'Copy'}
+                  onCopySuccess={() => trace.copy(msg.type, msg.subtaskId)}
                 />
               </div>
             )}
