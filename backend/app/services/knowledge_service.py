@@ -412,14 +412,42 @@ class KnowledgeService:
         knowledge_base_id: int,
     ) -> int:
         """
-        Get the document count for a knowledge base.
+        Get the total document count for a knowledge base (all documents).
 
         Args:
             db: Database session
             knowledge_base_id: Knowledge base ID
 
         Returns:
-            Number of active documents in the knowledge base
+            Number of documents in the knowledge base
+        """
+        from sqlalchemy import func
+
+        return (
+            db.query(func.count(KnowledgeDocument.id))
+            .filter(
+                KnowledgeDocument.kind_id == knowledge_base_id,
+            )
+            .scalar()
+            or 0
+        )
+
+    @staticmethod
+    def get_active_document_count(
+        db: Session,
+        knowledge_base_id: int,
+    ) -> int:
+        """
+        Get the active document count for a knowledge base.
+        Only counts documents that are indexed (is_active=True) and enabled (status=enabled).
+        Used for AI chat integration to show available documents.
+
+        Args:
+            db: Database session
+            knowledge_base_id: Knowledge base ID
+
+        Returns:
+            Number of active and enabled documents in the knowledge base
         """
         from sqlalchemy import func
 
@@ -428,6 +456,7 @@ class KnowledgeService:
             .filter(
                 KnowledgeDocument.kind_id == knowledge_base_id,
                 KnowledgeDocument.is_active == True,
+                KnowledgeDocument.status == DocumentStatus.ENABLED,
             )
             .scalar()
             or 0
@@ -506,7 +535,6 @@ class KnowledgeService:
             db.query(KnowledgeDocument)
             .filter(
                 KnowledgeDocument.id == document_id,
-                KnowledgeDocument.is_active == True,
             )
             .first()
         )
@@ -547,7 +575,6 @@ class KnowledgeService:
             db.query(KnowledgeDocument)
             .filter(
                 KnowledgeDocument.kind_id == knowledge_base_id,
-                KnowledgeDocument.is_active == True,
             )
             .order_by(KnowledgeDocument.created_at.desc())
             .all()
@@ -613,7 +640,7 @@ class KnowledgeService:
         user_id: int,
     ) -> bool:
         """
-        Physically delete a document.
+        Physically delete a document, its RAG index, and associated attachment.
 
         Args:
             db: Database session
@@ -626,6 +653,16 @@ class KnowledgeService:
         Raises:
             ValueError: If permission denied
         """
+        import asyncio
+        import logging
+
+        from app.services.adapters.retriever_kinds import retriever_kinds_service
+        from app.services.attachment import attachment_service
+        from app.services.rag.document_service import DocumentService
+        from app.services.rag.storage.factory import create_storage_backend
+
+        logger = logging.getLogger(__name__)
+
         doc = KnowledgeService.get_document(db, document_id, user_id)
         if not doc:
             return False
@@ -644,9 +681,86 @@ class KnowledgeService:
                     "Only Owner or Maintainer can delete documents from this knowledge base"
                 )
 
-        # Physically delete document
+        # Store document_id (used as doc_ref in RAG), kind_id, and attachment_id before deletion for cleanup
+        doc_ref = str(doc.id)  # document_id is used as doc_ref in RAG indexing
+        kind_id = doc.kind_id
+        attachment_id = doc.attachment_id
+
+        # Physically delete document from database
         db.delete(doc)
         db.commit()
+
+        # Delete RAG index if knowledge base has retrieval_config
+        if kb:
+            spec = kb.json.get("spec", {})
+            retrieval_config = spec.get("retrievalConfig")
+
+            if retrieval_config:
+                retriever_name = retrieval_config.get("retriever_name")
+                retriever_namespace = retrieval_config.get("retriever_namespace", "default")
+
+                if retriever_name:
+                    try:
+                        # Get retriever from database
+                        retriever_crd = retriever_kinds_service.get_retriever(
+                            db=db,
+                            user_id=user_id,
+                            name=retriever_name,
+                            namespace=retriever_namespace,
+                        )
+
+                        if retriever_crd:
+                            # Create storage backend from retriever
+                            storage_backend = create_storage_backend(retriever_crd)
+
+                            # Create document service
+                            doc_service = DocumentService(storage_backend=storage_backend)
+
+                            # Delete RAG index
+                            asyncio.run(
+                                doc_service.delete_document(
+                                    knowledge_id=str(kind_id),
+                                    doc_ref=doc_ref,
+                                    user_id=user_id,
+                                )
+                            )
+                            logger.info(
+                                f"Deleted RAG index for doc_ref '{doc_ref}' in knowledge base {kind_id}"
+                            )
+                        else:
+                            logger.warning(
+                                f"Retriever {retriever_name} not found, skipping RAG index deletion"
+                            )
+                    except Exception as e:
+                        # Log error but don't fail the document deletion
+                        logger.error(
+                            f"Failed to delete RAG index for doc_ref '{doc_ref}': {str(e)}",
+                            exc_info=True,
+                        )
+
+        # Delete associated attachment if exists
+        if attachment_id:
+            try:
+                deleted = attachment_service.delete_attachment(
+                    db=db,
+                    attachment_id=attachment_id,
+                    user_id=user_id,
+                )
+                if deleted:
+                    logger.info(
+                        f"Deleted attachment {attachment_id} for document {document_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"Failed to delete attachment {attachment_id} for document {document_id}"
+                    )
+            except Exception as e:
+                # Log error but don't fail the document deletion
+                logger.error(
+                    f"Failed to delete attachment {attachment_id}: {str(e)}",
+                    exc_info=True,
+                )
+
         return True
 
     # ============== Accessible Knowledge Query ==============
@@ -684,7 +798,7 @@ class KnowledgeService:
                 id=kb.id,
                 name=kb.json.get("spec", {}).get("name", ""),
                 description=kb.json.get("spec", {}).get("description"),
-                document_count=KnowledgeService.get_document_count(db, kb.id),
+                document_count=KnowledgeService.get_active_document_count(db, kb.id),
                 updated_at=kb.updated_at,
             )
             for kb in personal_kbs
@@ -728,7 +842,7 @@ class KnowledgeService:
                                 id=kb.id,
                                 name=kb.json.get("spec", {}).get("name", ""),
                                 description=kb.json.get("spec", {}).get("description"),
-                                document_count=KnowledgeService.get_document_count(db, kb.id),
+                                document_count=KnowledgeService.get_active_document_count(db, kb.id),
                                 updated_at=kb.updated_at,
                             )
                             for kb in group_kbs

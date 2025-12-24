@@ -830,8 +830,13 @@
           "type": "类型",
           "size": "大小",
           "date": "创建时间",
+          "indexStatus": "索引状态",
           "status": "状态",
           "actions": "操作"
+        },
+        "indexStatus": {
+          "available": "可用",
+          "unavailable": "不可用"
         },
         "search": "搜索文档",
         "empty": "暂无文档",
@@ -849,6 +854,7 @@
         "supportedTypes": "支持 PDF、Word、PPT、Excel、TXT、MD、图片（最大 20MB）",
         "uploading": "上传中...",
         "uploadSuccess": "文件上传成功",
+        "emptyHint": "暂无文档，点击右上角「上传文件」按钮添加您的第一个文档",
         "batch": {
           "selected": "已选择 {{count}} 项",
           "enable": "批量启用",
@@ -891,7 +897,8 @@
       "splitter": {
         "title": "分段设置",
         "type": "分段类型",
-        "general": "通用",
+        "sentence": "通用分段",
+        "semantic": "语义分段",
         "separator": "分段标识符",
         "separatorHint": "用于分割文档的字符",
         "chunkSize": "分段最大长度",
@@ -899,7 +906,11 @@
         "chunkOverlap": "分段重叠长度",
         "chunkOverlapHint": "段落之间重叠的字符数",
         "characters": "字符",
-        "overlapError": "重叠长度必须小于分段长度"
+        "overlapError": "重叠长度必须小于分段长度",
+        "bufferSize": "缓冲区大小",
+        "bufferSizeHint": "语义分段的缓冲区大小 (1-10)",
+        "breakpointThreshold": "断点阈值",
+        "breakpointThresholdHint": "确定断点的百分位阈值 (50-100)"
       },
       "retrievalTest": {
         "button": "召回测试",
@@ -1420,11 +1431,11 @@
     "test_input_label": "输入测试任务",
     "test_input_placeholder": "例如：帮我写一份本周的工作总结...",
     "iterate_label": "调整提示词",
-    "iterate_hint": "如果对回复不满意，告诉我你想怎么改，我会帮你优化提示词",
+    "iterate_hint": "如果对回复不满意，告诉我你想怎么改，我���帮你优化提示词",
     "iterate_placeholder": "例如：回复太长了，希望更简洁一些...",
     "iterate_button": "优化",
     "preview_adjust_title": "测试助手效果",
-    "preview_adjust_hint": "发送一个实际任务，看看助手会怎么回复。如果不满意，可以告诉我如何改进。",
+    "preview_adjust_hint": "发送一个实际任务，看看��手会怎么回复。如果不满意，可以告诉我如何改进。",
     "preview_adjust_empty_hint": "点击发送按钮查看AI回复效果，或者使用实际任务来测试。",
     "preview_adjust_input_label": "发送任务给助手",
     "preview_adjust_input_placeholder": "例如：帮我写一份本周的工作总结...",

@@ -342,6 +342,7 @@ async def create_document(
                         embedding_model_namespace=embedding_model_namespace,
                         user_id=current_user.id,
                         splitter_config=data.splitter_config,
+                        document_id=document.id,
                     )
                     logger.info(
                         f"Scheduled RAG indexing for document {document.id} in knowledge base {knowledge_base_id}"
@@ -368,6 +369,7 @@ def _index_document_background(
     embedding_model_namespace: str,
     user_id: int,
     splitter_config: Optional[SplitterConfig] = None,
+    document_id: Optional[int] = None,
 ):
     """
     Background task for RAG document indexing.
@@ -388,6 +390,7 @@ def _index_document_background(
         embedding_model_namespace: Embedding model namespace
         user_id: User ID
         splitter_config: Optional splitter configuration
+        document_id: Optional document ID to use as doc_ref
     """
     logger.info(
         f"Background task started: indexing document for knowledge base {knowledge_base_id}, "
@@ -430,12 +433,27 @@ def _index_document_background(
                 db=db,
                 attachment_id=attachment_id,
                 splitter_config=splitter_config,
+                document_id=document_id,
             )
         )
 
         logger.info(
             f"Successfully indexed document for knowledge base {knowledge_base_id}: {result}"
         )
+
+        # Update document is_active to True after successful indexing
+        if document_id:
+            from app.models.knowledge import KnowledgeDocument
+
+            doc = db.query(KnowledgeDocument).filter(
+                KnowledgeDocument.id == document_id
+            ).first()
+            if doc:
+                doc.is_active = True
+                db.commit()
+                logger.info(
+                    f"Updated document {document_id} is_active to True after successful indexing"
+                )
     except Exception as e:
         logger.error(
             f"Failed to index document for knowledge base {knowledge_base_id}: {str(e)}",
