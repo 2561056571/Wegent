@@ -11,16 +11,25 @@ It handles authentication, room management, and chat events.
 
 import asyncio
 import logging
+import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional
 
 import socketio
 from jose import jwt
-from pydantic import ValidationError
+from shared.telemetry.context import (
+    set_request_context,
+    set_user_context,
+)
+from sqlalchemy import and_
+from sqlalchemy.orm import Session
 
+from app.api.ws.context_decorators import auto_task_context
+from app.api.ws.decorators import trace_websocket_event
 from app.api.ws.events import (
     ChatCancelPayload,
     ChatResumePayload,
+    ChatRetryPayload,
     ChatSendAck,
     ChatSendPayload,
     ClientEvents,
@@ -37,6 +46,7 @@ from app.models.kind import Kind
 from app.models.subtask import Subtask, SubtaskRole, SubtaskStatus
 from app.models.user import User
 from app.schemas.kind import Bot, Shell, Task, Team
+from app.services.chat.rag_integration import retrieve_and_assemble_rag_prompt
 from app.services.chat.session_manager import session_manager
 
 logger = logging.getLogger(__name__)
@@ -228,23 +238,35 @@ class ChatNamespace(socketio.AsyncNamespace):
         """Initialize the chat namespace."""
         super().__init__(namespace)
         self._active_streams: Dict[int, asyncio.Task] = {}  # subtask_id -> stream task
+        self._stream_versions: Dict[int, str] = {}  # subtask_id -> "v1" | "v2"
 
         # Map colon-separated event names to handler methods
         self._event_handlers: Dict[str, str] = {
             "chat:send": "on_chat_send",
             "chat:cancel": "on_chat_cancel",
             "chat:resume": "on_chat_resume",
+            "chat:retry": "on_chat_retry",
             "task:join": "on_task_join",
             "task:leave": "on_task_leave",
             "history:sync": "on_history_sync",
         }
 
+    @trace_websocket_event(
+        exclude_events={"connect"},  # connect is handled separately in on_connect
+        extract_event_data=True,  # auto-extract task_id, team_id, subtask_id
+    )
     async def trigger_event(self, event: str, sid: str, *args):
         """
         Override trigger_event to handle colon-separated event names.
 
         python-socketio's default behavior converts on_xxx methods to xxx events,
         but we need to support colon-separated event names like 'chat:send'.
+
+        The @trace_websocket_event decorator automatically handles:
+        - Generating unique request_id for each event
+        - Restoring user context from session
+        - Creating OpenTelemetry span with event metadata
+        - Recording exceptions and span status
 
         Args:
             event: Event name (e.g., 'chat:send')
@@ -254,6 +276,10 @@ class ChatNamespace(socketio.AsyncNamespace):
         Returns:
             Result from the event handler
         """
+        return await self._execute_handler(event, sid, *args)
+
+    async def _execute_handler(self, event: str, sid: str, *args):
+        """Execute the event handler for the given event."""
         # Check if this is a colon-separated event we handle
         if event in self._event_handlers:
             handler_name = self._event_handlers[event]
@@ -281,6 +307,10 @@ class ChatNamespace(socketio.AsyncNamespace):
         Raises:
             ConnectionRefusedError: If authentication fails
         """
+        # Generate unique request ID for this WebSocket connection
+        request_id = str(uuid.uuid4())[:8]
+        set_request_context(request_id)
+
         logger.info(f"[WS] Connection attempt sid={sid}")
 
         # Check auth token
@@ -305,8 +335,12 @@ class ChatNamespace(socketio.AsyncNamespace):
             {
                 "user_id": user.id,
                 "user_name": user.user_name,
+                "request_id": request_id,
             },
         )
+
+        # Set user context for trace logging
+        set_user_context(user_id=str(user.id), user_name=user.user_name)
 
         # Join user room
         user_room = f"user:{user.id}"
@@ -324,6 +358,14 @@ class ChatNamespace(socketio.AsyncNamespace):
         try:
             session = await self.get_session(sid)
             user_id = session.get("user_id", "unknown")
+            request_id = session.get("request_id")
+
+            # Restore request context for trace logging
+            if request_id:
+                set_request_context(request_id)
+            if user_id != "unknown":
+                set_user_context(user_id=str(user_id))
+
             logger.info(f"[WS] Disconnected user={user_id} sid={sid}")
         except Exception:
             logger.info(f"[WS] Disconnected sid={sid}")
@@ -332,6 +374,7 @@ class ChatNamespace(socketio.AsyncNamespace):
     # Task Room Events
     # ============================================================
 
+    @auto_task_context(TaskJoinPayload)
     async def on_task_join(self, sid: str, data: dict) -> dict:
         """
         Handle task:join event.
@@ -345,10 +388,7 @@ class ChatNamespace(socketio.AsyncNamespace):
         Returns:
             {"streaming": {...}} or {"streaming": None} or {"error": "..."}
         """
-        try:
-            payload = TaskJoinPayload(**data)
-        except ValidationError as e:
-            return {"error": f"Invalid payload: {e}"}
+        payload = data  # Already validated by decorator
 
         session = await self.get_session(sid)
         user_id = session.get("user_id")
@@ -364,7 +404,9 @@ class ChatNamespace(socketio.AsyncNamespace):
         task_room = f"task:{payload.task_id}"
         await self.enter_room(sid, task_room)
 
-        logger.info(f"[WS] User {user_id} joined task room {payload.task_id}")
+        logger.info(
+            f"[WS] User {user_id} joined task room {payload.task_id} (room={task_room}, sid={sid})"
+        )
 
         # Check for active streaming
         streaming_info = await get_active_streaming(payload.task_id)
@@ -385,6 +427,7 @@ class ChatNamespace(socketio.AsyncNamespace):
 
         return {"streaming": None}
 
+    @auto_task_context(TaskLeavePayload)
     async def on_task_leave(self, sid: str, data: dict) -> dict:
         """
         Handle task:leave event.
@@ -396,10 +439,7 @@ class ChatNamespace(socketio.AsyncNamespace):
         Returns:
             {"success": true}
         """
-        try:
-            payload = TaskLeavePayload(**data)
-        except ValidationError as e:
-            return {"error": f"Invalid payload: {e}"}
+        payload = data  # Already validated by decorator
 
         task_room = f"task:{payload.task_id}"
         await self.leave_room(sid, task_room)
@@ -414,6 +454,201 @@ class ChatNamespace(socketio.AsyncNamespace):
     # Chat Events
     # ============================================================
 
+    async def _process_rag_if_needed(
+        self,
+        payload: ChatSendPayload,
+        request: Any,
+        should_trigger_ai: bool,
+        user_id: int,
+        db: Session,
+    ) -> Optional[tuple[Optional[Dict], Optional[str]]]:
+        """
+        Process RAG retrieval if contexts with knowledge bases are provided.
+
+        This method:
+        1. Extracts knowledge base contexts from payload.contexts
+        2. Calls RAG integration service to retrieve and assemble prompt
+        3. Returns metadata and RAG prompt separately (does NOT modify payload.message)
+        4. The RAG prompt should be used for AI inference, but original message for storage
+
+        Args:
+            payload: Chat send payload
+            request: Stream chat request
+            should_trigger_ai: Whether AI should be triggered
+            user_id: User ID
+            db: Database session
+
+        Returns:
+            Tuple of (context_metadata dict for subtask storage, rag_prompt for AI), or (None, None)
+        """
+        if not payload.contexts or not should_trigger_ai:
+            return None, None
+
+        # Filter knowledge_base type contexts
+        kb_contexts = [ctx for ctx in payload.contexts if ctx.type == "knowledge_base"]
+
+        if not kb_contexts:
+            return None, None
+
+        logger.info(
+            f"[WS] chat:send processing RAG with {len(kb_contexts)} knowledge base contexts"
+        )
+
+        # Build metadata for subtask storage
+        context_metadata = {
+            "contexts": [
+                {
+                    "type": ctx.type,
+                    "data": ctx.data,
+                }
+                for ctx in payload.contexts
+            ],
+            "original_query": payload.message,  # Store original query in metadata
+        }
+
+        try:
+            # Extract knowledge base IDs from context data
+            kb_ids = []
+            for ctx in kb_contexts:
+                try:
+                    kb_data = ctx.data
+                    knowledge_id = kb_data.get("knowledge_id")
+
+                    # knowledge_id may be string like "kb_001" or int
+                    if isinstance(knowledge_id, int):
+                        kb_ids.append(knowledge_id)
+                    elif isinstance(knowledge_id, str) and knowledge_id.isdigit():
+                        kb_ids.append(int(knowledge_id))
+                    else:
+                        logger.warning(
+                            f"[WS] chat:send skipping non-numeric knowledge_id: {knowledge_id}"
+                        )
+                except (ValueError, AttributeError, KeyError) as e:
+                    logger.warning(
+                        f"[WS] chat:send failed to parse knowledge_id from context: {e}"
+                    )
+                    continue
+
+            if not kb_ids:
+                logger.warning("[WS] chat:send no valid knowledge base IDs found")
+                return context_metadata, None
+
+            # Retrieve and assemble RAG prompt
+            rag_prompt = await retrieve_and_assemble_rag_prompt(
+                query=payload.message,
+                knowledge_base_ids=kb_ids,
+                user_id=user_id,
+                db=db,
+            )
+
+            if rag_prompt:
+                logger.info(
+                    f"[WS] chat:send RAG prompt assembled, length={len(rag_prompt)}"
+                )
+                # Return RAG prompt separately, do NOT modify payload.message
+                return context_metadata, rag_prompt
+            else:
+                logger.info("[WS] chat:send RAG retrieved no chunks")
+                return context_metadata, None
+
+        except Exception as e:
+            logger.error(f"[WS] chat:send RAG processing failed: {e}", exc_info=True)
+            # Continue with original message if RAG fails
+            return context_metadata, None
+
+    def _extract_knowledge_base_ids(
+        self, context_metadata: Optional[Dict]
+    ) -> list[int]:
+        """
+        Extract knowledge base IDs from context metadata.
+
+        Args:
+            context_metadata: Context metadata dict containing contexts
+
+        Returns:
+            List of knowledge base IDs
+        """
+        kb_ids = []
+        if not context_metadata:
+            return kb_ids
+
+        for ctx in context_metadata.get("contexts", []):
+            if ctx.get("type") == "knowledge_base":
+                try:
+                    kb_data = ctx.get("data", {})
+                    kb_id = kb_data.get("knowledge_id")
+
+                    if isinstance(kb_id, int):
+                        kb_ids.append(kb_id)
+                    elif isinstance(kb_id, str) and kb_id.isdigit():
+                        kb_ids.append(int(kb_id))
+                    else:
+                        logger.warning(
+                            f"[WS] chat:send skipping non-numeric knowledge_id: {kb_id}"
+                        )
+                except (ValueError, AttributeError, KeyError) as e:
+                    logger.warning(
+                        f"[WS] chat:send failed to parse knowledge_id from context: {e}"
+                    )
+                    continue
+
+        return kb_ids
+
+    async def _process_context_and_rag(
+        self,
+        payload: ChatSendPayload,
+        request: Any,
+        should_trigger_ai: bool,
+        user_id: int,
+        db: Session,
+    ) -> tuple[Optional[Dict], Optional[str]]:
+        """
+        Process context metadata and RAG based on chat version.
+
+        This method handles RAG processing differently for chat v1 and chat_v2:
+        - chat_v2 (enable_deep_thinking=True): Only extracts context metadata for tool-based RAG
+        - chat v1 (enable_deep_thinking=False): Performs full RAG retrieval and prompt assembly
+
+        Args:
+            payload: Chat send payload
+            request: Stream chat request
+            should_trigger_ai: Whether AI should be triggered
+            user_id: User ID
+            db: Database session
+
+        Returns:
+            Tuple of (context_metadata dict, rag_prompt string or None)
+        """
+        if payload.enable_deep_thinking:
+            # For chat_v2: only extract context metadata, no RAG retrieval
+            # KnowledgeBaseTool will handle retrieval dynamically
+            if payload.contexts and should_trigger_ai:
+                context_metadata = {
+                    "contexts": [
+                        {
+                            "type": ctx.type,
+                            "data": ctx.data,
+                        }
+                        for ctx in payload.contexts
+                    ],
+                    "original_query": payload.message,
+                }
+                logger.info(
+                    f"[WS] chat:send chat_v2 mode: extracted context metadata with {len(payload.contexts)} contexts"
+                )
+                return context_metadata, None
+            return None, None
+        else:
+            # For chat v1: process RAG with retrieval and prompt assembly
+            return await self._process_rag_if_needed(
+                payload=payload,
+                request=request,
+                should_trigger_ai=should_trigger_ai,
+                user_id=user_id,
+                db=db,
+            )
+
+    @auto_task_context(ChatSendPayload, task_id_field="task_id")
     async def on_chat_send(self, sid: str, data: dict) -> dict:
         """
         Handle chat:send event.
@@ -429,14 +664,10 @@ class ChatNamespace(socketio.AsyncNamespace):
         """
         logger.info(f"[WS] chat:send received sid={sid} data={data}")
 
-        try:
-            payload = ChatSendPayload(**data)
-            logger.info(
-                f"[WS] chat:send payload parsed: team_id={payload.team_id}, task_id={payload.task_id}, message_len={len(payload.message) if payload.message else 0}"
-            )
-        except ValidationError as e:
-            logger.error(f"[WS] chat:send validation error: {e}")
-            return {"error": f"Invalid payload: {e}"}
+        payload = data  # Already validated by decorator
+        logger.info(
+            f"[WS] chat:send payload parsed: team_id={payload.team_id}, task_id={payload.task_id}, message_len={len(payload.message) if payload.message else 0}"
+        )
 
         session = await self.get_session(sid)
         user_id = session.get("user_id")
@@ -526,7 +757,11 @@ class ChatNamespace(socketio.AsyncNamespace):
                 team_id=payload.team_id,
                 task_id=payload.task_id,
                 title=payload.title,
-                attachment_id=payload.attachment_id,
+                attachment_id=(
+                    payload.attachment_ids[0]
+                    if payload.attachment_ids
+                    else payload.attachment_id
+                ),
                 enable_web_search=payload.enable_web_search,
                 search_engine=payload.search_engine,
                 enable_clarification=payload.enable_clarification,
@@ -542,6 +777,15 @@ class ChatNamespace(socketio.AsyncNamespace):
             )
             logger.info(f"[WS] chat:send StreamChatRequest created")
 
+            # Process context metadata and RAG based on chat version
+            context_metadata, rag_prompt = await self._process_context_and_rag(
+                payload=payload,
+                request=request,
+                should_trigger_ai=should_trigger_ai,
+                user_id=user_id,
+                db=db,
+            )
+
             # Create task and subtasks
             # Use different methods based on supports_direct_chat:
             # - If supports_direct_chat is True: use _create_task_and_subtasks (async, for Chat Shell)
@@ -555,10 +799,11 @@ class ChatNamespace(socketio.AsyncNamespace):
                     db,
                     user,
                     team,
-                    payload.message,
+                    payload.message,  # Original message for storage
                     request,
                     payload.task_id,
                     should_trigger_ai=should_trigger_ai,
+                    rag_prompt=rag_prompt,  # RAG prompt for AI inference
                 )
                 logger.info(
                     f"[WS] chat:send _create_task_and_subtasks returned: ai_triggered={result.get('ai_triggered')}, task_id={result.get('task').id if result.get('task') else None}"
@@ -590,7 +835,7 @@ class ChatNamespace(socketio.AsyncNamespace):
                     type="online",
                     task_type=task_type,
                     auto_delete_executor="false",
-                    source="chat_shell",
+                    source="web",
                     model_id=payload.force_override_bot_model,
                     force_override_bot_model=payload.force_override_bot_model
                     is not None,
@@ -646,20 +891,43 @@ class ChatNamespace(socketio.AsyncNamespace):
 
                 user_subtask_for_attachment = user_subtask
 
+            # Update user subtask with context metadata
+            if context_metadata and user_subtask_for_attachment:
+                try:
+                    user_subtask_for_attachment.metadata = context_metadata
+                    db.commit()
+                    logger.info(
+                        f"[WS] chat:send stored context metadata in subtask {user_subtask_for_attachment.id}"
+                    )
+                except Exception as e:
+                    logger.exception(
+                        f"[WS] chat:send failed to store context metadata: {e}"
+                    )
+                    db.rollback()
+
             # Link attachment to user subtask if provided
             # This is important for group chat history to include attachment content
-            if payload.attachment_id and user_subtask_for_attachment:
+            # Support both legacy attachment_id and new attachment_ids
+            attachment_ids_to_link = []
+            if payload.attachment_ids:
+                attachment_ids_to_link = payload.attachment_ids
+            elif payload.attachment_id:
+                # Backward compatibility: convert single attachment_id to list
+                attachment_ids_to_link = [payload.attachment_id]
+
+            if attachment_ids_to_link and user_subtask_for_attachment:
                 from app.services.attachment import attachment_service
 
-                attachment_service.link_attachment_to_subtask(
-                    db=db,
-                    attachment_id=payload.attachment_id,
-                    subtask_id=user_subtask_for_attachment.id,
-                    user_id=user_id,
-                )
-                logger.info(
-                    f"[WS] chat:send linked attachment {payload.attachment_id} to subtask {user_subtask_for_attachment.id}"
-                )
+                for attachment_id in attachment_ids_to_link:
+                    attachment_service.link_attachment_to_subtask(
+                        db=db,
+                        attachment_id=attachment_id,
+                        subtask_id=user_subtask_for_attachment.id,
+                        user_id=user_id,
+                    )
+                    logger.info(
+                        f"[WS] chat:send linked attachment {attachment_id} to subtask {user_subtask_for_attachment.id}"
+                    )
 
             # Join task room
             task_room = f"task:{task.id}"
@@ -697,35 +965,71 @@ class ChatNamespace(socketio.AsyncNamespace):
                     message=payload.message,
                     user_id=user_id,
                     user_name=user_name,
-                    attachment_id=payload.attachment_id,
+                    attachment_id=(
+                        payload.attachment_ids[0]
+                        if payload.attachment_ids
+                        else payload.attachment_id
+                    ),
                     task_room=task_room,
                     skip_sid=sid,
                 )
                 logger.info(f"[WS] chat:send broadcasted user message to room")
 
+            # Note: Model override metadata is already set during task creation
+            # by _create_task_and_subtasks() or task_kinds_service.create_task_or_append()
+            # No need to update it again here
+
             # Trigger AI response if needed (decoupled logic in ai_trigger.py)
             if should_trigger_ai and assistant_subtask:
-                from app.services.chat.ai_trigger import trigger_ai_response
+                # Choose AI trigger based on enable_deep_thinking flag
+                if payload.enable_deep_thinking:
+                    logger.info("enable_deep_thinking is true, using chat_v2")
+                    from app.services.chat_v2.ai_trigger import trigger_ai_response
 
-                await trigger_ai_response(
-                    task=task,
-                    assistant_subtask=assistant_subtask,
-                    team=team,
-                    user=user,
-                    message=payload.message,
-                    payload=payload,
-                    task_room=task_room,
-                    supports_direct_chat=supports_direct_chat,
-                    namespace=self,
-                )
+                    # For chat_v2: extract knowledge base IDs for tool-based RAG
+                    kb_ids = self._extract_knowledge_base_ids(context_metadata)
+                    if kb_ids:
+                        logger.info(
+                            f"[WS] chat:send chat_v2 will use KnowledgeBaseTool with {len(kb_ids)} knowledge bases: {kb_ids}"
+                        )
+
+                    await trigger_ai_response(
+                        task=task,
+                        assistant_subtask=assistant_subtask,
+                        team=team,
+                        user=user,
+                        message=payload.message,  # Original message
+                        payload=payload,
+                        task_room=task_room,
+                        supports_direct_chat=supports_direct_chat,
+                        namespace=self,
+                        knowledge_base_ids=kb_ids,  # Pass KB IDs for tool-based RAG
+                    )
+                else:
+                    logger.info("enable_deep_thinking is false, using chat")
+                    from app.services.chat.ai_trigger import trigger_ai_response
+
+                    # For chat v1: use RAG prompt if available
+                    ai_message = rag_prompt or payload.message
+
+                    await trigger_ai_response(
+                        task=task,
+                        assistant_subtask=assistant_subtask,
+                        team=team,
+                        user=user,
+                        message=ai_message,  # Use RAG prompt for v1
+                        payload=payload,
+                        task_room=task_room,
+                        supports_direct_chat=supports_direct_chat,
+                        namespace=self,
+                    )
 
             # Return unified response - same structure for all modes
-            response = {
+            return {
                 "task_id": task.id,
                 "subtask_id": user_subtask.id if user_subtask else None,
+                "message_id": user_subtask.message_id if user_subtask else None,
             }
-            logger.info(f"[WS] chat:send returning response: {response}")
-            return response
 
         except Exception as e:
             logger.exception(f"[WS] chat:send exception: {e}")
@@ -790,11 +1094,18 @@ class ChatNamespace(socketio.AsyncNamespace):
         # Build attachments array (supports multiple attachments in the future)
         attachments_list = [attachment_info] if attachment_info else None
 
+        logger.info(
+            f"[WS] Broadcasting user message to room: room={task_room}, "
+            f"skip_sid={skip_sid}, message_id={user_subtask.message_id}, "
+            f"sender_user_id={user_id}, sender_user_name={user_name}"
+        )
+
         await self.emit(
             ServerEvents.CHAT_MESSAGE,
             {
                 "subtask_id": user_subtask.id,
                 "task_id": task_id,
+                "message_id": user_subtask.message_id,
                 "role": "user",
                 "content": message,
                 "sender": {
@@ -809,6 +1120,15 @@ class ChatNamespace(socketio.AsyncNamespace):
             skip_sid=skip_sid,
         )
 
+        logger.info(
+            f"[WS] User message broadcasted successfully: "
+            f"room={task_room}, message_id={user_subtask.message_id}, "
+            f"content_length={len(message)}"
+        )
+
+    @auto_task_context(
+        ChatCancelPayload, task_id_field=None, subtask_id_field="subtask_id"
+    )
     async def on_chat_cancel(self, sid: str, data: dict) -> dict:
         """
         Handle chat:cancel event.
@@ -820,11 +1140,7 @@ class ChatNamespace(socketio.AsyncNamespace):
         Returns:
             {"success": true} or {"error": "..."}
         """
-        try:
-            payload = ChatCancelPayload(**data)
-        except ValidationError as e:
-            logger.error(f"[WS] chat:cancel validation error: {e}")
-            return {"error": f"Invalid payload: {e}"}
+        payload = data  # Already validated by decorator
 
         session = await self.get_session(sid)
         user_id = session.get("user_id")
@@ -870,8 +1186,26 @@ class ChatNamespace(socketio.AsyncNamespace):
             )
 
             if is_chat_shell:
-                # For Chat Shell tasks, use session_manager
-                await session_manager.cancel_stream(payload.subtask_id)
+                # For Chat Shell tasks, determine which session_manager to use
+                # based on the version map created at stream registration
+                stream_version = self._stream_versions.get(payload.subtask_id, "v1")
+
+                if stream_version == "v2":
+                    # Use chat_v2 session_manager
+                    logger.info(
+                        f"[WS] chat:cancel Using chat_v2 session_manager for subtask_id={payload.subtask_id}"
+                    )
+                    from app.services.chat_v2.storage import (
+                        session_manager as session_manager_v2,
+                    )
+
+                    await session_manager_v2.cancel_stream(payload.subtask_id)
+                else:
+                    # Use chat session_manager (v1)
+                    logger.info(
+                        f"[WS] chat:cancel Using chat session_manager (v1) for subtask_id={payload.subtask_id}"
+                    )
+                    await session_manager.cancel_stream(payload.subtask_id)
             else:
                 # For Executor tasks, call executor_manager API
                 await call_executor_cancel(subtask.task_id)
@@ -926,9 +1260,21 @@ class ChatNamespace(socketio.AsyncNamespace):
                 await ws_emitter.emit_chat_cancelled(
                     task_id=subtask.task_id, subtask_id=payload.subtask_id
                 )
+
+                # Also emit chat:done with message_id for proper message ordering
+                # This ensures the cancelled message has message_id set for correct sorting
+                await ws_emitter.emit_chat_done(
+                    task_id=subtask.task_id,
+                    subtask_id=payload.subtask_id,
+                    offset=(
+                        len(payload.partial_content) if payload.partial_content else 0
+                    ),
+                    result=subtask.result or {},
+                    message_id=subtask.message_id,
+                )
             else:
                 logger.warning(
-                    f"[WS] chat:cancel WebSocket emitter not available, cannot broadcast chat:cancelled event"
+                    f"[WS] chat:cancel WebSocket emitter not available, cannot broadcast events"
                 )
 
             # Notify group chat members about the status change
@@ -952,6 +1298,413 @@ class ChatNamespace(socketio.AsyncNamespace):
         finally:
             db.close()
 
+    def _fetch_retry_context(
+        self, db, payload: "ChatRetryPayload"
+    ) -> tuple[
+        Optional["Subtask"], Optional["Kind"], Optional["Kind"], Optional["Subtask"]
+    ]:
+        """
+        Fetch all required database entities for retry operation in a single optimized query.
+
+        Args:
+            db: Database session
+            payload: Retry payload with task_id and subtask_id
+
+        Returns:
+            Tuple of (failed_ai_subtask, task, team, user_subtask)
+        """
+        from sqlalchemy.orm import aliased, joinedload
+
+        TaskKind = aliased(Kind)
+        TeamKind = aliased(Kind)
+
+        # Optimized query: fetch failed_ai_subtask, task, and team in one go
+        query_result = (
+            db.query(
+                Subtask,  # failed_ai_subtask
+                TaskKind,  # task
+                TeamKind,  # team
+            )
+            .select_from(Subtask)  # Explicitly specify the main table
+            .outerjoin(
+                TaskKind,
+                and_(
+                    TaskKind.id == payload.task_id,
+                    TaskKind.kind == "Task",
+                    TaskKind.is_active,
+                ),
+            )
+            .outerjoin(
+                TeamKind,
+                and_(
+                    TeamKind.id == Subtask.team_id,
+                    TeamKind.kind == "Team",
+                    TeamKind.is_active,
+                ),
+            )
+            .filter(
+                Subtask.id == payload.subtask_id,
+                Subtask.task_id == payload.task_id,
+                Subtask.role == SubtaskRole.ASSISTANT,
+            )
+            .first()
+        )
+
+        if not query_result:
+            return None, None, None, None
+
+        failed_ai_subtask, task, team = query_result
+
+        # Fetch user subtask separately
+        # Key insight: parent_id stores message_id (not subtask.id) throughout the system
+        # Both in chat.py and task_kinds.py, parent_id is always set to message_id
+        user_subtask = None
+        if failed_ai_subtask and failed_ai_subtask.parent_id:
+            # Use parent_id as message_id to find the triggering USER subtask
+            # This works for both single chat and group chat
+            user_subtask = (
+                db.query(Subtask)
+                .options(joinedload(Subtask.attachments))  # Preload attachments
+                .filter(
+                    Subtask.task_id == failed_ai_subtask.task_id,
+                    Subtask.message_id == failed_ai_subtask.parent_id,
+                    Subtask.role == SubtaskRole.USER,
+                )
+                .first()
+            )
+            if user_subtask:
+                logger.info(
+                    f"[WS] chat:retry found user_subtask via parent_id as message_id: "
+                    f"id={user_subtask.id}, message_id={user_subtask.message_id}, "
+                    f"prompt={user_subtask.prompt[:50] if user_subtask.prompt else ''}..."
+                )
+            else:
+                logger.warning(
+                    f"[WS] chat:retry could not find USER subtask with message_id={failed_ai_subtask.parent_id}"
+                )
+
+        return failed_ai_subtask, task, team, user_subtask
+
+    def _reset_subtask_for_retry(self, db, subtask: "Subtask") -> None:
+        """
+        Reset a failed subtask to PENDING status for retry.
+
+        Args:
+            db: Database session
+            subtask: The subtask to reset
+
+        Raises:
+            Exception: If database commit fails
+        """
+        subtask.status = SubtaskStatus.PENDING
+        subtask.progress = 0
+        subtask.error_message = ""
+        subtask.result = None
+        subtask.updated_at = datetime.now()
+
+        try:
+            db.commit()
+            db.refresh(subtask)
+        except Exception as e:
+            logger.error(f"[WS] chat:retry failed to reset subtask: {e}", exc_info=True)
+            db.rollback()
+            raise  # Re-raise to prevent downstream processing
+
+        logger.info(
+            f"[WS] chat:retry reset subtask to PENDING: id={subtask.id}, message_id={subtask.message_id}"
+        )
+
+    def _extract_model_override_info(self, task: "Kind") -> tuple[Optional[str], bool]:
+        """
+        Extract model override information from task metadata.
+
+        Reading Model Override Metadata:
+        - Primary source: task.json.metadata.labels (set by on_chat_send when user overrides model)
+        - Fallback source: task.json.spec (for compatibility with other shells)
+
+        Args:
+            task: The task containing metadata
+
+        Returns:
+            Tuple of (model_id, force_override)
+        """
+        task_spec_dict = task.json.get("spec", {})
+        task_metadata = task.json.get("metadata", {})
+        task_labels = task_metadata.get("labels", {})
+
+        # Try to get model info from metadata.labels first (for direct chat)
+        model_id = task_labels.get("modelId") or task_spec_dict.get("modelId")
+        force_override = (
+            task_labels.get("forceOverrideBotModel") == "true"
+            or task_spec_dict.get("forceOverrideBotModel") == "true"
+        )
+
+        logger.info(
+            f"[WS] chat:retry extracted model info: model_id={model_id}, force_override={force_override}"
+        )
+
+        return model_id, force_override
+
+    @auto_task_context(
+        ChatRetryPayload, task_id_field="task_id", subtask_id_field="subtask_id"
+    )
+    async def on_chat_retry(self, sid: str, data: dict) -> dict:
+        """
+        Handle chat:retry event to retry a failed chat message.
+
+        This implements the Same-ID retry mechanism: instead of creating a new subtask,
+        it resets the existing failed AI subtask to PENDING status and triggers a new
+        AI response. This maintains message order and preserves the conversation flow.
+
+        Key features:
+        - Reuses the same subtask_id and message_id for consistency
+        - Preserves model override information from task metadata
+        - Supports both direct chat (streaming) and executor-based execution
+        - Performs optimized database queries using JOIN to reduce round trips
+
+        Args:
+            sid: Socket.IO session ID
+            data: Validated payload containing task_id and subtask_id
+
+        Returns:
+            dict: Success/error response
+
+        Raises:
+            No exceptions - all errors are caught and returned as error dict
+        """
+        payload = data  # Already validated by decorator
+        logger.info(
+            f"[WS] chat:retry received sid={sid}, "
+            f"raw_data_type={type(data)}, "
+            f"payload={payload}, "
+            f"force_override_bot_model={payload.force_override_bot_model} (type={type(payload.force_override_bot_model)}), "
+            f"force_override_bot_model_type={payload.force_override_bot_model_type} (type={type(payload.force_override_bot_model_type)})"
+        )
+
+        session = await self.get_session(sid)
+        user_id = session.get("user_id")
+
+        if not user_id:
+            logger.error("[WS] chat:retry error: Not authenticated")
+            return {"error": "Not authenticated"}
+
+        # Check permission: verify user has access to the task
+        if not await can_access_task(user_id, payload.task_id):
+            logger.error(
+                f"[WS] chat:retry error: Access denied for user={user_id} task={payload.task_id}"
+            )
+            return {"error": "Access denied"}
+
+        db = SessionLocal()
+        try:
+            # Fetch all required entities using optimized query
+            failed_ai_subtask, task, team, user_subtask = self._fetch_retry_context(
+                db, payload
+            )
+
+            # Validate entities exist
+            if not failed_ai_subtask:
+                logger.error(
+                    f"[WS] chat:retry error: AI subtask not found id={payload.subtask_id}"
+                )
+                return {"error": "AI subtask not found"}
+
+            if not task:
+                logger.error(
+                    f"[WS] chat:retry error: Task not found id={payload.task_id}"
+                )
+                return {"error": "Task not found"}
+
+            if not team:
+                logger.error(
+                    f"[WS] chat:retry error: Team not found id={failed_ai_subtask.team_id}"
+                )
+                return {"error": "Team not found"}
+
+            if not user_subtask:
+                logger.error(
+                    f"[WS] chat:retry error: User subtask not found parent_id={failed_ai_subtask.parent_id}"
+                )
+                return {"error": "User message not found"}
+
+            logger.info(
+                f"[WS] chat:retry found failed_ai_subtask: id={failed_ai_subtask.id}, "
+                f"message_id={failed_ai_subtask.message_id}, "
+                f"parent_id={failed_ai_subtask.parent_id}, "
+                f"status={failed_ai_subtask.status.value}"
+            )
+            logger.info(
+                f"[WS] chat:retry found user_subtask: id={user_subtask.id}, prompt={user_subtask.prompt[:50] if user_subtask.prompt else ''}..."
+            )
+
+            # Reset the failed AI subtask to PENDING status
+            self._reset_subtask_for_retry(db, failed_ai_subtask)
+
+            # Trigger AI response
+            from app.api.endpoints.adapter.chat import _should_use_direct_chat
+            from app.models.user import User
+            from app.services.chat.ai_trigger import trigger_ai_response
+
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                logger.error(f"[WS] chat:retry error: User not found id={user_id}")
+                return {"error": "User not found"}
+
+            supports_direct_chat = _should_use_direct_chat(db, team, user_id)
+            logger.info(f"[WS] chat:retry supports_direct_chat={supports_direct_chat}")
+
+            # Determine model to use for retry:
+            # Use the SAME logic as normal message sending (ChatSendPayload handling):
+            # 1. If use_model_override is True:
+            #    - If force_override_bot_model is provided: use that specific model
+            #    - If force_override_bot_model is None/empty: use bot's default model
+            # 2. If use_model_override is False: fall back to task metadata model
+            #
+            # This matches the normal chat flow where:
+            # - model_id = undefined (None) means "use bot's default"
+            # - force_override_bot_model = True means "apply user's selection"
+            # - force_override_bot_model = False means "use task metadata"
+            model_id = None
+            model_type = None
+
+            if payload.use_model_override:
+                # User explicitly selected a model (including "Default Model")
+                # Use the model from payload if provided, otherwise use bot's default (None)
+                model_id = payload.force_override_bot_model
+                model_type = payload.force_override_bot_model_type
+                logger.info(
+                    f"[WS] chat:retry use_model_override=True, using model from payload: "
+                    f"model_id={model_id}, model_type={model_type}"
+                )
+            else:
+                # User did not override model selection, fall back to task metadata
+                # This preserves the original model used when the task was created
+                task_model_id, force_override = self._extract_model_override_info(task)
+                if force_override and task_model_id:
+                    model_id = task_model_id
+                    logger.info(
+                        f"[WS] chat:retry use_model_override=False, using model from task metadata: "
+                        f"model_id={model_id}"
+                    )
+                else:
+                    logger.info(
+                        f"[WS] chat:retry use_model_override=False, no task metadata model, "
+                        f"will use bot's default model"
+                    )
+
+            # Build payload for AI trigger (reuse user message content and model override)
+            # If model_id exists, use it; otherwise, use None to let the bot use its default model
+            from app.api.ws.events import ChatSendPayload
+
+            # Get attachment from user_subtask if exists
+            attachment_id = None
+            if user_subtask.attachments:
+                # Use the first attachment (chat messages typically have one attachment)
+                attachment_id = user_subtask.attachments[0].id
+                logger.info(
+                    f"[WS] chat:retry found attachment: id={attachment_id}, "
+                    f"filename={user_subtask.attachments[0].original_filename}"
+                )
+
+            retry_payload = ChatSendPayload(
+                task_id=payload.task_id,
+                team_id=team.id,
+                message=user_subtask.prompt or "",
+                attachment_id=attachment_id,
+                force_override_bot_model=model_id,
+                force_override_bot_model_type=model_type,
+                is_group_chat=False,
+            )
+
+            # Trigger AI response
+            task_room = f"task:{payload.task_id}"
+            await trigger_ai_response(
+                task=task,
+                assistant_subtask=failed_ai_subtask,  # Reuse the same subtask
+                team=team,
+                user=user,
+                message=user_subtask.prompt or "",
+                payload=retry_payload,
+                task_room=task_room,
+                supports_direct_chat=supports_direct_chat,
+                namespace=self,
+            )
+
+            logger.info(
+                f"[WS] chat:retry AI response triggered for subtask_id={failed_ai_subtask.id}"
+            )
+
+            return {"success": True}
+
+        except ValueError as e:
+            # Validation errors, data parsing errors
+            logger.error(f"[WS] chat:retry validation error: {e}", exc_info=True)
+            db.rollback()
+
+            # Broadcast error to all clients in task room
+            from app.services.chat.ws_emitter import get_ws_emitter
+
+            ws_emitter = get_ws_emitter()
+            if ws_emitter and payload.subtask_id:
+                await ws_emitter.emit_chat_error(
+                    task_id=payload.task_id,
+                    subtask_id=payload.subtask_id,
+                    error=f"Invalid data: {str(e)}",
+                    message_id=None,  # Will use subtask's message_id
+                )
+
+            return {"error": f"Invalid data: {str(e)}"}
+        except PermissionError as e:
+            # Permission/access errors
+            logger.error(f"[WS] chat:retry permission error: {e}", exc_info=True)
+            db.rollback()
+
+            # Broadcast error to all clients in task room
+            from app.services.chat.ws_emitter import get_ws_emitter
+
+            ws_emitter = get_ws_emitter()
+            if ws_emitter and payload.subtask_id:
+                await ws_emitter.emit_chat_error(
+                    task_id=payload.task_id,
+                    subtask_id=payload.subtask_id,
+                    error=f"Access denied: {str(e)}",
+                    message_id=None,
+                )
+
+            return {"error": f"Access denied: {str(e)}"}
+        except Exception as e:
+            # Catch SQLAlchemy errors and other unexpected exceptions
+            from sqlalchemy.exc import SQLAlchemyError
+
+            logger.error(f"[WS] chat:retry exception: {e}", exc_info=True)
+            db.rollback()
+
+            # Broadcast error to all clients in task room
+            from app.services.chat.ws_emitter import get_ws_emitter
+
+            ws_emitter = get_ws_emitter()
+            error_msg = (
+                "Database error occurred"
+                if isinstance(e, SQLAlchemyError)
+                else f"Internal server error: {str(e)}"
+            )
+            if ws_emitter and payload.subtask_id:
+                await ws_emitter.emit_chat_error(
+                    task_id=payload.task_id,
+                    subtask_id=payload.subtask_id,
+                    error=error_msg,
+                    message_id=None,
+                )
+
+            if isinstance(e, SQLAlchemyError):
+                return {"error": "Database error occurred"}
+            return {"error": f"Internal server error: {str(e)}"}
+        finally:
+            db.close()
+
+    @auto_task_context(
+        ChatResumePayload, task_id_field="task_id", subtask_id_field="subtask_id"
+    )
     async def on_chat_resume(self, sid: str, data: dict) -> dict:
         """
         Handle chat:resume event.
@@ -963,10 +1716,7 @@ class ChatNamespace(socketio.AsyncNamespace):
         Returns:
             {"success": true} or {"error": "..."}
         """
-        try:
-            payload = ChatResumePayload(**data)
-        except ValidationError as e:
-            return {"error": f"Invalid payload: {e}"}
+        payload = data  # Already validated by decorator
 
         session = await self.get_session(sid)
         user_id = session.get("user_id")
@@ -1002,6 +1752,7 @@ class ChatNamespace(socketio.AsyncNamespace):
 
         return {"success": True}
 
+    @auto_task_context(HistorySyncPayload)
     async def on_history_sync(self, sid: str, data: dict) -> dict:
         """
         Handle history:sync event.
@@ -1013,10 +1764,7 @@ class ChatNamespace(socketio.AsyncNamespace):
         Returns:
             {"messages": [...]} or {"error": "..."}
         """
-        try:
-            payload = HistorySyncPayload(**data)
-        except ValidationError as e:
-            return {"error": f"Invalid payload: {e}"}
+        payload = data  # Already validated by decorator
 
         session = await self.get_session(sid)
         user_id = session.get("user_id")

@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     CHAT_HISTORY_MAX_MESSAGES: int = 50  # Maximum messages to keep in history
     CHAT_API_TIMEOUT_SECONDS: int = 300  # LLM API call timeout (5 minutes)
 
+    # Tool calling flow limits
+    CHAT_TOOL_MAX_REQUESTS: int = 5  # Maximum LLM requests in tool calling flow
+    CHAT_TOOL_MAX_TIME_SECONDS: float = 30.0  # Maximum time for tool calling flow
     # Group chat history configuration
     # In group chat mode, AI-bot sees: first N messages + last M messages (no duplicates)
     # If total messages < N + M, all messages are kept
@@ -121,7 +124,7 @@ class Settings(BaseSettings):
 
     # File upload configuration
     MAX_UPLOAD_FILE_SIZE_MB: int = 100  # Maximum file size in MB
-    MAX_EXTRACTED_TEXT_LENGTH: int = 1500000  # Maximum extracted text length
+    MAX_EXTRACTED_TEXT_LENGTH: int = 500000  # Maximum extracted text length
 
     # Attachment storage backend configuration
     # Supported backends: "mysql" (default), "s3", "minio"
@@ -141,6 +144,9 @@ class Settings(BaseSettings):
     # Web search configuration
     WEB_SEARCH_ENABLED: bool = False  # Enable/disable web search feature
     WEB_SEARCH_ENGINES: str = "{}"  # JSON configuration for search API adapter
+    WEB_SEARCH_DEFAULT_MAX_RESULTS: int = (
+        100  # Default max results when not specified by LLM or engine config
+    )
 
     # Wizard configuration
     # The name of the public model to use for wizard AI features (follow-up questions, prompt generation)
@@ -174,6 +180,12 @@ class Settings(BaseSettings):
     GRACEFUL_SHUTDOWN_TIMEOUT: int = 600
     # Whether to reject new requests during shutdown (503 Service Unavailable)
     SHUTDOWN_REJECT_NEW_REQUESTS: bool = True
+
+    # API trusted sources configuration (comma-separated list)
+    # When set, allows trusted services to proxy requests on behalf of users
+    # via wegent-source and wegent-username headers
+    # Example: "service-a,service-b,internal-gateway"
+    API_TRUSTED_SOURCES: str = ""
 
     # OpenTelemetry configuration is centralized in shared/telemetry/config.py
     # Use: from shared.telemetry.config import get_otel_config

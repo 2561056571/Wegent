@@ -7,7 +7,7 @@ import tailwindcssAnimate from 'tailwindcss-animate';
 const withOpacity = variable => `rgb(var(${variable}) / <alpha-value>)`;
 
 /** @type {import('tailwindcss').Config} */
-module.exports = {
+export default {
   darkMode: ['class', '[data-theme="dark"]'],
   content: [
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
@@ -19,6 +19,7 @@ module.exports = {
     extend: {
       fontFamily: {
         sans: [
+          '"PingFang SC"',
           '-apple-system',
           'BlinkMacSystemFont',
           '"Segoe UI"',
