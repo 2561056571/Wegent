@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_db
 from app.db.session import SessionLocal
 from app.core import security
+from app.db.session import SessionLocal
 from app.models.user import User
 from app.schemas.knowledge import (
     AccessibleKnowledgeResponse,
@@ -33,10 +34,10 @@ from app.schemas.knowledge import (
     ResourceScope,
 )
 from app.schemas.rag import SplitterConfig
+from app.services.adapters.retriever_kinds import retriever_kinds_service
 from app.services.knowledge_service import KnowledgeService
 from app.services.rag.document_service import DocumentService
 from app.services.rag.storage.factory import create_storage_backend
-from app.services.adapters.retriever_kinds import retriever_kinds_service
 
 logger = logging.getLogger(__name__)
 

@@ -7,8 +7,11 @@
 import { Suspense, useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import TopNavigation from '@/features/layout/TopNavigation';
-import TaskSidebar from '@/features/tasks/components/TaskSidebar';
-import ResizableSidebar from '@/features/tasks/components/ResizableSidebar';
+import {
+  TaskSidebar,
+  ResizableSidebar,
+  CollapsedSidebarButtons,
+} from '@/features/tasks/components/sidebar';
 import { SettingsTabNav, SettingsTabId } from '@/features/settings/components/SettingsTabNav';
 import GitHubIntegration from '@/features/settings/components/GitHubIntegration';
 import NotificationSettings from '@/features/settings/components/NotificationSettings';
@@ -22,6 +25,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { GithubStarButton } from '@/features/layout/GithubStarButton';
 import { ThemeToggle } from '@/features/theme/ThemeToggle';
 import { useIsMobile } from '@/features/layout/hooks/useMediaQuery';
+import { paths } from '@/config/paths';
 import '@/app/tasks/tasks.css';
 import '@/features/common/scrollbar.css';
 
@@ -83,6 +87,11 @@ function SettingsContent() {
       localStorage.setItem('task-sidebar-collapsed', String(newValue));
       return newValue;
     });
+  };
+
+  // Handle new task from collapsed sidebar button
+  const handleNewTask = () => {
+    router.replace(paths.chat.getHref());
   };
 
   // Handle tab change
@@ -173,6 +182,11 @@ function SettingsContent() {
   }, [activeTab, selectedGroup]);
   return (
     <div className="flex smart-h-screen bg-base text-text-primary box-border">
+      {/* Collapsed sidebar floating buttons */}
+      {isCollapsed && !isMobile && (
+        <CollapsedSidebarButtons onExpand={handleToggleCollapsed} onNewTask={handleNewTask} />
+      )}
+
       {/* Resizable sidebar with TaskSidebar */}
       <ResizableSidebar isCollapsed={isCollapsed} onToggleCollapsed={handleToggleCollapsed}>
         <TaskSidebar
@@ -192,6 +206,7 @@ function SettingsContent() {
           variant="with-sidebar"
           title={t('settings.title')}
           onMobileSidebarToggle={() => setIsMobileSidebarOpen(true)}
+          isSidebarCollapsed={isCollapsed}
         >
           {isMobile ? <ThemeToggle /> : <GithubStarButton />}
         </TopNavigation>

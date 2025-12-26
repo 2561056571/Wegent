@@ -4,21 +4,22 @@
 
 'use client';
 
-import { Suspense, useState, useEffect, useMemo } from 'react';
+import { Suspense, useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { teamService } from '@/features/tasks/service/teamService';
 import TopNavigation from '@/features/layout/TopNavigation';
-import TaskSidebar from '@/features/tasks/components/TaskSidebar';
-import ResizableSidebar from '@/features/tasks/components/ResizableSidebar';
-import CollapsedSidebarButtons from '@/features/tasks/components/CollapsedSidebarButtons';
+import {
+  TaskSidebar,
+  ResizableSidebar,
+  CollapsedSidebarButtons,
+  SearchDialog,
+} from '@/features/tasks/components/sidebar';
 import OnboardingTour from '@/features/onboarding/OnboardingTour';
-import ChatArea from '@/features/tasks/components/ChatArea';
-import TaskParamSync from '@/features/tasks/components/TaskParamSync';
-import TeamShareHandler from '@/features/tasks/components/TeamShareHandler';
+import { TaskParamSync } from '@/features/tasks/components/params';
+import { TeamShareHandler } from '@/features/tasks/components/share';
 import OidcTokenHandler from '@/features/login/components/OidcTokenHandler';
-import Workbench from '@/features/tasks/components/Workbench';
 import WorkbenchToggle from '@/features/layout/WorkbenchToggle';
-import OpenMenu from '@/features/tasks/components/OpenMenu';
+import { OpenMenu } from '@/features/tasks/components/input';
 import '@/app/tasks/tasks.css';
 import '@/features/common/scrollbar.css';
 import { GithubStarButton } from '@/features/layout/GithubStarButton';
@@ -31,6 +32,9 @@ import { useIsMobile } from '@/features/layout/hooks/useMediaQuery';
 import { calculateOpenLinks } from '@/utils/openLinks';
 import { useUser } from '@/features/common/UserContext';
 import { paths } from '@/config/paths';
+import { useSearchShortcut } from '@/features/tasks/hooks/useSearchShortcut';
+import { Workbench } from '@/features/tasks/components';
+import { ChatArea } from '@/features/tasks/components/chat';
 
 export default function CodePage() {
   // Get search params to check for taskId
@@ -81,6 +85,19 @@ export default function CodePage() {
 
   // Workbench state - default to true when taskId exists
   const [isWorkbenchOpen, setIsWorkbenchOpen] = useState(true);
+
+  // Search dialog state (controlled from page level for global shortcut support)
+  const [isSearchDialogOpen, setIsSearchDialogOpen] = useState(false);
+
+  // Toggle search dialog callback
+  const toggleSearchDialog = useCallback(() => {
+    setIsSearchDialogOpen(prev => !prev);
+  }, []);
+
+  // Global search shortcut hook
+  const { shortcutDisplayText } = useSearchShortcut({
+    onToggle: toggleSearchDialog,
+  });
 
   // Mobile detection
   const isMobile = useIsMobile();
@@ -246,6 +263,9 @@ export default function CodePage() {
             pageType="code"
             isCollapsed={isCollapsed}
             onToggleCollapsed={handleToggleCollapsed}
+            isSearchDialogOpen={isSearchDialogOpen}
+            onSearchDialogOpenChange={setIsSearchDialogOpen}
+            shortcutDisplayText={shortcutDisplayText}
           />
         </ResizableSidebar>
         {/* Main content area with right panel*/}
@@ -258,6 +278,7 @@ export default function CodePage() {
             taskDetail={selectedTaskDetail}
             onMobileSidebarToggle={() => setIsMobileSidebarOpen(true)}
             onTaskDeleted={handleTaskDeleted}
+            isSidebarCollapsed={isCollapsed}
           >
             {shareButton}
             {isMobile ? <ThemeToggle /> : <GithubStarButton />}
@@ -311,6 +332,13 @@ export default function CodePage() {
           </div>
         </div>
       </div>
+      {/* Search Dialog - rendered at page level for global shortcut support */}
+      <SearchDialog
+        open={isSearchDialogOpen}
+        onOpenChange={setIsSearchDialogOpen}
+        shortcutDisplayText={shortcutDisplayText}
+        pageType="code"
+      />
     </>
   );
 }

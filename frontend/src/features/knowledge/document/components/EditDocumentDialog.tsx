@@ -32,7 +32,7 @@ export function EditDocumentDialog({
   document,
   onSuccess,
 }: EditDocumentDialogProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation('knowledge');
   const [name, setName] = useState('');
   const [splitterConfig, setSplitterConfig] = useState<Partial<SplitterConfig>>({
     type: 'sentence',
@@ -86,7 +86,7 @@ export function EditDocumentDialog({
 
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setError(t('knowledge.document.document.nameRequired'));
+      setError(t('document.document.nameRequired'));
       return;
     }
 
@@ -100,7 +100,7 @@ export function EditDocumentDialog({
       });
       onSuccess();
     } catch (err) {
-      setError(t('knowledge.document.document.updateFailed'));
+      setError(t('document.document.updateFailed'));
       console.error('Failed to update document:', err);
     } finally {
       setLoading(false);
@@ -111,21 +111,21 @@ export function EditDocumentDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{t('knowledge.document.document.edit')}</DialogTitle>
+          <DialogTitle>{t('document.document.edit')}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="py-4 space-y-6">
             {/* Document Name */}
             <div>
               <label className="block text-sm font-medium text-text-primary mb-1.5">
-                {t('knowledge.document.document.columns.name')}
+                {t('document.document.columns.name')}
               </label>
               <input
                 type="text"
                 value={name}
                 onChange={e => setName(e.target.value)}
                 className="w-full h-9 px-3 text-sm bg-surface border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
-                placeholder={t('knowledge.document.document.namePlaceholder')}
+                placeholder={t('document.document.namePlaceholder')}
                 autoFocus
               />
             </div>
@@ -168,10 +168,10 @@ export function EditDocumentDialog({
               onClick={() => onOpenChange(false)}
               disabled={loading}
             >
-              {t('actions.cancel')}
+              {t('common:actions.cancel')}
             </Button>
             <Button type="submit" variant="primary" disabled={loading || !name.trim()}>
-              {loading ? t('actions.saving') : t('actions.save')}
+              {loading ? t('common:actions.saving') : t('common:actions.save')}
             </Button>
           </DialogFooter>
         </form>
