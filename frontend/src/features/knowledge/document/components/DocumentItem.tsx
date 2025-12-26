@@ -127,8 +127,8 @@ export function DocumentItem({
       <div className="w-16 flex-shrink-0 text-center">
         <Badge variant={document.is_active ? 'success' : 'warning'} size="sm">
           {document.is_active
-            ? t('knowledge.document.document.indexStatus.available')
-            : t('knowledge.document.document.indexStatus.unavailable')}
+            ? t('document.document.indexStatus.available')
+            : t('document.document.indexStatus.unavailable')}
         </Badge>
       </div>
 

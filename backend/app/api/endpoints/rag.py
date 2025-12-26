@@ -325,8 +325,8 @@ async def retrieve_documents(
         retrieval_params = {
             "query": request.query,
             "knowledge_id": request.knowledge_id,
-            "embedding_model_name": request.embedding_model_ref.name,
-            "embedding_model_namespace": request.embedding_model_ref.namespace,
+            "embedding_model_name": request.embedding_model_ref.model_name,
+            "embedding_model_namespace": request.embedding_model_ref.model_namespace,
             "user_id": index_owner_user_id,
             "db": db,
             "top_k": request.top_k,

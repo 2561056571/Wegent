@@ -375,10 +375,10 @@ export function DocumentList({ knowledgeBase, onBack, canManage = true }: Docume
                 <SortIcon field="date" />
               </div>
               <div className="w-16 flex-shrink-0 text-center">
-                {t('knowledge.document.document.columns.indexStatus')}
+                {t('document.document.columns.indexStatus')}
               </div>
               <div className="w-16 flex-shrink-0 text-center">
-                {t('knowledge.document.document.columns.status')}
+                {t('document.document.columns.status')}
               </div>
               {canManage && (
                 <div className="w-20 flex-shrink-0 text-center">
@@ -410,9 +410,7 @@ export function DocumentList({ knowledgeBase, onBack, canManage = true }: Docume
       ) : canManage ? (
         <div className="flex flex-col items-center justify-center py-16 text-text-secondary">
           <FileUp className="w-16 h-16 mb-4 text-text-muted opacity-60" />
-          <p className="text-base text-text-primary mb-2">
-            {t('knowledge.document.document.emptyHint')}
-          </p>
+          <p className="text-base text-text-primary mb-2">{t('document.document.emptyHint')}</p>
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-12 text-text-secondary">

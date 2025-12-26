@@ -160,7 +160,7 @@ export function EditKnowledgeBaseDialog({
                   ) : (
                     <ChevronRight className="w-4 h-4" />
                   )}
-                  {t('knowledge.document.advancedSettings.title')}
+                  {t('document.advancedSettings.title')}
                 </button>
 
                 {showAdvanced && (

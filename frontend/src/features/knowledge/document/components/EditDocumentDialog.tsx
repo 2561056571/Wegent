@@ -142,9 +142,9 @@ export function EditDocumentDialog({
                 ) : (
                   <ChevronRight className="w-4 h-4" />
                 )}
-                {t('knowledge.document.splitter.title')}
+                {t('document.splitter.title')}
                 <span className="text-xs text-text-muted font-normal ml-auto">
-                  {t('knowledge.document.advancedSettings.readOnly')}
+                  {t('document.advancedSettings.readOnly')}
                 </span>
               </button>
 

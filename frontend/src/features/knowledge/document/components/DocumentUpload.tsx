@@ -170,7 +170,7 @@ export function DocumentUpload({ open, onOpenChange, onUploadComplete }: Documen
               <Accordion type="single" collapsible className="border-none">
                 <AccordionItem value="advanced" className="border-none">
                   <AccordionTrigger className="text-sm font-medium hover:no-underline">
-                    {t('knowledge.document.advancedSettings.title')}
+                    {t('document.advancedSettings.title')}
                   </AccordionTrigger>
                   <AccordionContent>
                     <div className="space-y-4 pt-2">
@@ -188,14 +188,14 @@ export function DocumentUpload({ open, onOpenChange, onUploadComplete }: Documen
 
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={handleClose}>
-            {t('common:cancel')}
+            {t('common:actions.cancel')}
           </Button>
           <Button
             variant="primary"
             onClick={handleConfirm}
             disabled={!state.attachment || state.isUploading || !!state.error}
           >
-            {t('common:confirm')}
+            {t('common:actions.confirm')}
           </Button>
         </div>
       </DialogContent>
