@@ -69,7 +69,14 @@ async def create_streaming_response(
 
     # Set up chat session (config, task, subtasks)
     setup = setup_chat_session(
-        db, user, team, model_info, input_text, tool_settings, task_id, api_trusted_source
+        db,
+        user,
+        team,
+        model_info,
+        input_text,
+        tool_settings,
+        task_id,
+        api_trusted_source,
     )
 
     response_id = f"resp_{setup.task_id}"
@@ -212,7 +219,9 @@ async def create_streaming_response(
                 except Exception as e:
                     logger.error(f"Failed to create LLM from model config: {e}")
                     await db_handler.update_subtask_status(
-                        assistant_subtask_id, "FAILED", error=f"Failed to create LLM: {e}"
+                        assistant_subtask_id,
+                        "FAILED",
+                        error=f"Failed to create LLM: {e}",
                     )
                     return
 
@@ -312,9 +321,9 @@ async def create_streaming_response(
             # Cleanup MCP client if used
             if mcp_client:
                 try:
-                    await mcp_client.close()
+                    await mcp_client.disconnect()
                 except Exception as e:
-                    logger.warning(f"[OPENAPI] Failed to close MCP client: {e}")
+                    logger.warning(f"[OPENAPI] Failed to disconnect MCP client: {e}")
 
             await session_manager.unregister_stream(assistant_subtask_id)
             await session_manager.delete_streaming_content(assistant_subtask_id)
@@ -381,7 +390,14 @@ async def create_sync_response(
 
     # Set up chat session (config, task, subtasks)
     setup = setup_chat_session(
-        db, user, team, model_info, input_text, tool_settings, task_id, api_trusted_source
+        db,
+        user,
+        team,
+        model_info,
+        input_text,
+        tool_settings,
+        task_id,
+        api_trusted_source,
     )
 
     response_id = f"resp_{setup.task_id}"
@@ -532,9 +548,9 @@ async def create_sync_response(
         # Cleanup MCP client if used
         if mcp_client:
             try:
-                await mcp_client.close()
+                await mcp_client.disconnect()
             except Exception as e:
-                logger.warning(f"[OPENAPI_SYNC] Failed to close MCP client: {e}")
+                logger.warning(f"[OPENAPI_SYNC] Failed to disconnect MCP client: {e}")
 
     # Build response
     message_id = f"msg_{assistant_subtask_id}"

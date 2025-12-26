@@ -110,7 +110,12 @@ class OpenAPIStreamingService:
                 {
                     "type": "response.output_item.added",
                     "output_index": 0,
-                    "item": {"type": "message", "role": "assistant", "content": []},
+                    "item": {
+                        "type": "message",
+                        "id": message_id,
+                        "role": "assistant",
+                        "content": [],
+                    },
                 },
             )
 
@@ -206,16 +211,18 @@ class OpenAPIStreamingService:
                 status="failed",
                 error=ResponseError(code="stream_error", message=str(e)),
                 model=model_string,
-                output=[
-                    OutputMessage(
-                        id=message_id,
-                        status="incomplete",
-                        role="assistant",
-                        content=[OutputTextContent(text=accumulated_text)],
-                    )
-                ]
-                if accumulated_text
-                else [],
+                output=(
+                    [
+                        OutputMessage(
+                            id=message_id,
+                            status="incomplete",
+                            role="assistant",
+                            content=[OutputTextContent(text=accumulated_text)],
+                        )
+                    ]
+                    if accumulated_text
+                    else []
+                ),
                 previous_response_id=previous_response_id,
             )
             yield _format_sse_event(
