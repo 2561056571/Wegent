@@ -18,6 +18,7 @@ import {
   ToggleRight,
   Target,
   FileUp,
+  RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -266,6 +267,11 @@ export function DocumentList({ knowledgeBase, onBack, canManage = true }: Docume
         </div>
         {/* Spacer to push buttons to the right */}
         <div className="flex-1" />
+
+        {/* Refresh button */}
+        <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+        </Button>
 
         {/* Retrieval test button */}
         <Button variant="outline" size="sm" onClick={() => setShowRetrievalTest(true)}>

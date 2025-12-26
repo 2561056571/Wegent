@@ -13,7 +13,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import fsspec
 from llama_index.core import Document, SimpleDirectoryReader
 
 from app.schemas.rag import SplitterConfig

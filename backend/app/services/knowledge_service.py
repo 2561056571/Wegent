@@ -386,7 +386,7 @@ class KnowledgeService:
             True if deleted, False if not found
 
         Raises:
-            ValueError: If permission denied
+            ValueError: If permission denied or knowledge base has documents
         """
         kb = KnowledgeService.get_knowledge_base(db, knowledge_base_id, user_id)
         if not kb:
@@ -400,6 +400,14 @@ class KnowledgeService:
                 raise ValueError(
                     "Only Owner or Maintainer can delete knowledge base in this group"
                 )
+
+        # Check if knowledge base has documents - prevent deletion if documents exist
+        document_count = KnowledgeService.get_document_count(db, knowledge_base_id)
+        if document_count > 0:
+            raise ValueError(
+                f"Cannot delete knowledge base with {document_count} document(s). "
+                "Please delete all documents first."
+            )
 
         # Physically delete the knowledge base
         db.delete(kb)
@@ -663,6 +671,23 @@ class KnowledgeService:
 
         logger = logging.getLogger(__name__)
 
+        def run_async(coro):
+            """
+            Run an async coroutine safely, handling the case where
+            an event loop is already running (e.g., in FastAPI async context).
+            """
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                # No running event loop, safe to use asyncio.run()
+                return asyncio.run(coro)
+            else:
+                # Event loop is already running, create a new task
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, coro)
+                    return future.result()
+
         doc = KnowledgeService.get_document(db, document_id, user_id)
         if not doc:
             return False
@@ -726,7 +751,7 @@ class KnowledgeService:
                                 index_owner_user_id = kb.user_id
 
                             # Delete RAG index using the correct user_id
-                            asyncio.run(
+                            run_async(
                                 doc_service.delete_document(
                                     knowledge_id=str(kind_id),
                                     doc_ref=doc_ref,

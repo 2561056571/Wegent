@@ -15,7 +15,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db
-from app.db.session import SessionLocal
 from app.core import security
 from app.db.session import SessionLocal
 from app.models.user import User
