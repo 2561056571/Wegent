@@ -716,16 +716,26 @@ class KnowledgeService:
                             # Create document service
                             doc_service = DocumentService(storage_backend=storage_backend)
 
-                            # Delete RAG index
+                            # Get the correct user_id for index naming
+                            # For group knowledge bases, use the KB creator's user_id
+                            # This ensures we delete from the same index where documents were stored
+                            if kb.namespace == "default":
+                                index_owner_user_id = user_id
+                            else:
+                                # Group knowledge base - use KB creator's user_id
+                                index_owner_user_id = kb.user_id
+
+                            # Delete RAG index using the correct user_id
                             asyncio.run(
                                 doc_service.delete_document(
                                     knowledge_id=str(kind_id),
                                     doc_ref=doc_ref,
-                                    user_id=user_id,
+                                    user_id=index_owner_user_id,
                                 )
                             )
                             logger.info(
-                                f"Deleted RAG index for doc_ref '{doc_ref}' in knowledge base {kind_id}"
+                                f"Deleted RAG index for doc_ref '{doc_ref}' in knowledge base {kind_id} "
+                                f"(index_owner_user_id={index_owner_user_id})"
                             )
                         else:
                             logger.warning(

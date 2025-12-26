@@ -50,7 +50,7 @@ export function RetrievalSettingsSection({
 }: RetrievalSettingsSectionProps) {
   const { t } = useTranslation();
   const { retrievers, loading: loadingRetrievers } = useRetrievers(scope, groupName);
-  const { models: embeddingModels, loading: loadingModels } = useEmbeddingModels();
+  const { models: embeddingModels, loading: loadingModels } = useEmbeddingModels(scope, groupName);
   const { methods: retrievalMethods } = useRetrievalMethods();
 
   const [topK, setTopK] = useState(config.top_k ?? 5);

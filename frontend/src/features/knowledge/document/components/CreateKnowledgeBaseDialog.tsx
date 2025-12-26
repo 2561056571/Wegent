@@ -73,7 +73,7 @@ export function CreateKnowledgeBaseDialog({
     models: embeddingModels,
     loading: loadingModels,
     refetch: refetchModels,
-  } = useEmbeddingModels();
+  } = useEmbeddingModels(scope, groupName);
 
   useEffect(() => {
     if (open) {
