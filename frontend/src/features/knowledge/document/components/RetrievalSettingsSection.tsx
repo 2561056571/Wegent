@@ -169,6 +169,26 @@ export function RetrievalSettingsSection({
     [config, onChange]
   );
 
+  // Helper function to get source type label
+  const getSourceTypeLabel = (type: string) => {
+    const typeKey = type as 'user' | 'public' | 'group';
+    return t(`document.retrieval.sourceType.${typeKey}`);
+  };
+
+  // Format retriever label with source type
+  const formatRetrieverLabel = (retriever: (typeof retrievers)[0]) => {
+    const displayName = retriever.displayName || retriever.name;
+    const sourceLabel = getSourceTypeLabel(retriever.type);
+    return `[${sourceLabel}] ${displayName}`;
+  };
+
+  // Format model label with source type
+  const formatModelLabel = (model: (typeof embeddingModels)[0]) => {
+    const displayName = model.displayName || model.name;
+    const sourceLabel = getSourceTypeLabel(model.type);
+    return `[${sourceLabel}] ${displayName}`;
+  };
+
   // Determine if retriever and embedding model should be disabled
   // They are disabled when readOnly is true OR when partialReadOnly is true
   const isRetrieverDisabled = readOnly || partialReadOnly;
@@ -202,7 +222,7 @@ export function RetrievalSettingsSection({
               disabled={isRetrieverDisabled}
               items={retrievers.map(retriever => ({
                 value: retriever.name,
-                label: retriever.displayName || retriever.name,
+                label: formatRetrieverLabel(retriever),
               }))}
             />
             <p className="text-xs text-text-muted">{t('document.retrieval.retrieverHint')}</p>
@@ -234,7 +254,7 @@ export function RetrievalSettingsSection({
               disabled={isEmbeddingDisabled}
               items={embeddingModels.map(model => ({
                 value: model.name,
-                label: model.displayName || model.name,
+                label: formatModelLabel(model),
               }))}
             />
             <p className="text-xs text-text-muted">{t('document.retrieval.embeddingModelHint')}</p>

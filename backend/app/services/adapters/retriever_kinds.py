@@ -36,17 +36,19 @@ class RetrieverKindsService(BaseService[Kind, Dict, Dict]):
         group_name: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
-        List retrievers with scope support.
+        List retrievers with scope support, including public retrievers.
 
         Scope behavior:
-        - scope='personal' (default): personal retrievers only (namespace='default')
-        - scope='group': group retrievers (requires group_name or queries all user's groups)
-        - scope='all': personal + all user's groups
+        - scope='personal' (default): personal retrievers + public retrievers (namespace='default')
+        - scope='group': group retrievers + public retrievers (requires group_name or queries all user's groups)
+        - scope='all': personal + all user's groups + public retrievers
 
         Query logic:
-        - For personal scope (namespace='default'): query with user_id filter
-        - For group scope (namespace!='default'): query without user_id filter
+        - For personal scope (namespace='default'): query with user_id filter, plus public (user_id=0)
+        - For group scope (namespace!='default'): query without user_id filter, plus public
           Group retrievers may be created by other users in the same group.
+
+        Priority: personal/group retrievers > public retrievers (same name)
 
         Args:
             db: Database session
@@ -60,6 +62,7 @@ class RetrieverKindsService(BaseService[Kind, Dict, Dict]):
         # Determine which namespaces to query based on scope
         personal_namespaces = []
         group_namespaces = []
+        include_public = True  # Always include public retrievers
 
         if scope == "personal":
             # Personal retrievers only (default namespace)
@@ -79,13 +82,10 @@ class RetrieverKindsService(BaseService[Kind, Dict, Dict]):
         else:
             raise ValueError(f"Invalid scope: {scope}")
 
-        # Handle empty namespaces case
-        if not personal_namespaces and not group_namespaces:
-            return []
-
         retrievers = []
+        seen_names = set()  # Track seen retriever names to handle priority
 
-        # Query personal retrievers (with user_id filter)
+        # Query personal retrievers (with user_id filter) - highest priority
         if personal_namespaces:
             personal_retrievers = (
                 db.query(Kind)
@@ -98,7 +98,9 @@ class RetrieverKindsService(BaseService[Kind, Dict, Dict]):
                 .order_by(Kind.created_at.desc())
                 .all()
             )
-            retrievers.extend(personal_retrievers)
+            for r in personal_retrievers:
+                retrievers.append(r)
+                seen_names.add(r.name)
 
         # Query group retrievers (without user_id filter)
         if group_namespaces:
@@ -112,7 +114,28 @@ class RetrieverKindsService(BaseService[Kind, Dict, Dict]):
                 .order_by(Kind.created_at.desc())
                 .all()
             )
-            retrievers.extend(group_retrievers)
+            for r in group_retrievers:
+                retrievers.append(r)
+                seen_names.add(r.name)
+
+        # Query public retrievers (user_id=0) - lowest priority
+        if include_public:
+            public_retrievers = (
+                db.query(Kind)
+                .filter(
+                    Kind.user_id == 0,
+                    Kind.kind == "Retriever",
+                    Kind.namespace == "default",
+                    Kind.is_active == True,
+                )
+                .order_by(Kind.created_at.desc())
+                .all()
+            )
+            for r in public_retrievers:
+                # Only add if not already present (personal/group takes priority)
+                if r.name not in seen_names:
+                    retrievers.append(r)
+                    seen_names.add(r.name)
 
         return [self._kind_to_summary(kind) for kind in retrievers]
 
@@ -125,12 +148,16 @@ class RetrieverKindsService(BaseService[Kind, Dict, Dict]):
         namespace: str = "default",
     ) -> Retriever:
         """
-        Get a specific retriever by name.
+        Get a specific retriever by name with public retriever fallback.
 
         Query logic:
-        - If namespace='default': query with user_id filter (personal retriever)
-        - If namespace!='default': query without user_id filter (group retriever)
+        - If namespace='default': query with user_id filter (personal retriever),
+          fall back to public retriever (user_id=0) if not found
+        - If namespace!='default': query without user_id filter (group retriever),
+          fall back to public retriever if not found
           Group retrievers may be created by other users in the same group.
+
+        Priority: personal/group retriever > public retriever
 
         Args:
             db: Database session
@@ -153,20 +180,23 @@ class RetrieverKindsService(BaseService[Kind, Dict, Dict]):
                     status_code=403, detail="Access denied to this group"
                 )
 
-        # Query retriever
+        # Query retriever with priority fallback
         # For group resources (namespace != 'default'), don't filter by user_id
         # since the retriever may be created by other users in the same group
+        kind = None
+
         if namespace == "default":
-            # Personal retriever: filter by user_id
+            # Personal retriever: filter by user_id, fallback to public (user_id=0)
             kind = (
                 db.query(Kind)
                 .filter(
-                    Kind.user_id == user_id,
                     Kind.name == name,
                     Kind.kind == "Retriever",
                     Kind.namespace == namespace,
                     Kind.is_active == True,
                 )
+                .filter((Kind.user_id == user_id) | (Kind.user_id == 0))
+                .order_by(Kind.user_id.desc())  # Prioritize user's retriever (user_id > 0)
                 .first()
             )
         else:
@@ -181,6 +211,19 @@ class RetrieverKindsService(BaseService[Kind, Dict, Dict]):
                 )
                 .first()
             )
+            # Fallback to public retriever if not found in group
+            if not kind:
+                kind = (
+                    db.query(Kind)
+                    .filter(
+                        Kind.user_id == 0,
+                        Kind.name == name,
+                        Kind.kind == "Retriever",
+                        Kind.namespace == "default",
+                        Kind.is_active == True,
+                    )
+                    .first()
+                )
 
         if not kind:
             raise HTTPException(status_code=404, detail="Retriever not found")
@@ -545,8 +588,16 @@ class RetrieverKindsService(BaseService[Kind, Dict, Dict]):
         """
         try:
             retriever = Retriever.model_validate(kind.json)
-            # Determine type based on namespace
-            type_ = "group" if kind.namespace != "default" else "user"
+            # Determine type based on user_id and namespace
+            # - user_id=0: public retriever
+            # - namespace!='default': group retriever
+            # - otherwise: user (personal) retriever
+            if kind.user_id == 0:
+                type_ = "public"
+            elif kind.namespace != "default":
+                type_ = "group"
+            else:
+                type_ = "user"
             return {
                 "name": kind.name,
                 "type": type_,
@@ -557,8 +608,13 @@ class RetrieverKindsService(BaseService[Kind, Dict, Dict]):
             }
         except Exception as e:
             logger.warning(f"Failed to parse retriever {kind.name}: {e}")
-            # Determine type based on namespace
-            type_ = "group" if kind.namespace != "default" else "user"
+            # Determine type based on user_id and namespace
+            if kind.user_id == 0:
+                type_ = "public"
+            elif kind.namespace != "default":
+                type_ = "group"
+            else:
+                type_ = "user"
             return {
                 "name": kind.name,
                 "type": type_,

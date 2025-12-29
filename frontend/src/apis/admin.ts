@@ -114,6 +114,59 @@ export interface ChatSloganTipsResponse {
   tips: ChatTipItem[];
 }
 
+// Public Retriever Types
+export interface AdminPublicRetriever {
+  id: number;
+  name: string;
+  namespace: string;
+  displayName: string | null;
+  storageType: string;
+  description: string | null;
+  json: Record<string, unknown>;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminPublicRetrieverListResponse {
+  total: number;
+  items: AdminPublicRetriever[];
+}
+
+export interface RetrieverCRD {
+  apiVersion?: string;
+  kind?: string;
+  metadata: {
+    name: string;
+    namespace: string;
+    displayName?: string;
+  };
+  spec: {
+    storageConfig: {
+      type: string;
+      url: string;
+      username?: string;
+      password?: string;
+      apiKey?: string;
+      indexStrategy: {
+        mode: string;
+        fixedName?: string;
+        rollingStep?: number;
+        prefix?: string;
+      };
+      ext?: Record<string, unknown>;
+    };
+    retrievalMethods?: Record<
+      string,
+      {
+        enabled: boolean;
+        defaultWeight?: number;
+      }
+    >;
+    description?: string;
+  };
+}
+
 // Admin API Services
 export const adminApis = {
   // ==================== User Management ====================
@@ -263,5 +316,41 @@ export const adminApis = {
    */
   async updateSloganTipsConfig(data: ChatSloganTipsUpdate): Promise<ChatSloganTipsResponse> {
     return apiClient.put('/admin/system-config/slogan-tips', data);
+  },
+
+  // ==================== Public Retriever Management ====================
+
+  /**
+   * Get list of all public retrievers with pagination
+   */
+  async getPublicRetrievers(
+    page: number = 1,
+    limit: number = 20
+  ): Promise<AdminPublicRetrieverListResponse> {
+    return apiClient.get(`/admin/public-retrievers?page=${page}&limit=${limit}`);
+  },
+
+  /**
+   * Create a new public retriever
+   */
+  async createPublicRetriever(retrieverData: RetrieverCRD): Promise<AdminPublicRetriever> {
+    return apiClient.post('/admin/public-retrievers', retrieverData);
+  },
+
+  /**
+   * Update a public retriever
+   */
+  async updatePublicRetriever(
+    retrieverId: number,
+    retrieverData: RetrieverCRD
+  ): Promise<AdminPublicRetriever> {
+    return apiClient.put(`/admin/public-retrievers/${retrieverId}`, retrieverData);
+  },
+
+  /**
+   * Delete a public retriever
+   */
+  async deletePublicRetriever(retrieverId: number): Promise<void> {
+    return apiClient.delete(`/admin/public-retrievers/${retrieverId}`);
   },
 };
