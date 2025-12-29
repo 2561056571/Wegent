@@ -58,7 +58,8 @@ export function RetrievalSettingsSection({
   const [vectorWeight, setVectorWeight] = useState(config.hybrid_weights?.vector_weight ?? 0.7);
 
   // Generate unique key for retriever (name + namespace)
-  const getRetrieverKey = (name: string, namespace: string) => `${name}@${namespace}`;
+  // Use '::' as separator since it's unlikely to appear in names/namespaces
+  const getRetrieverKey = (name: string, namespace: string) => `${namespace}::${name}`;
 
   // Get current retriever key from config
   const currentRetrieverKey =
@@ -110,7 +111,7 @@ export function RetrievalSettingsSection({
         retriever_namespace: selectedRetriever.namespace,
       });
     }
-  }, [loadingRetrievers, retrievers, config.retriever_name, scope]);
+  }, [loadingRetrievers, retrievers, config, onChange, scope]);
 
   // Auto-select first embedding model if data exists and no selection
   useEffect(() => {
@@ -124,7 +125,7 @@ export function RetrievalSettingsSection({
         },
       });
     }
-  }, [loadingModels, embeddingModels, config.embedding_config?.model_name]);
+  }, [loadingModels, embeddingModels, config, onChange]);
 
   const handleRetrieverChange = (value: string) => {
     // value is in format "name@namespace"

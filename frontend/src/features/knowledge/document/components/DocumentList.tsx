@@ -205,7 +205,7 @@ export function DocumentList({ knowledgeBase, onBack, canManage = true }: Docume
           <input
             type="text"
             className="w-full h-9 pl-9 pr-3 text-sm bg-surface border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
-            placeholder={t('knowledge:document.document.search')}
+            placeholder={t('document.document.search')}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
           />
@@ -221,14 +221,14 @@ export function DocumentList({ knowledgeBase, onBack, canManage = true }: Docume
         {/* Retrieval test button */}
         <Button variant="outline" size="sm" onClick={() => setShowRetrievalTest(true)}>
           <Target className="w-4 h-4 mr-1" />
-          {t('knowledge:document.retrievalTest.button')}
+          {t('document.retrievalTest.button')}
         </Button>
 
         {/* Upload button - right aligned */}
         {canManage && (
           <Button variant="primary" size="sm" onClick={() => setShowUpload(true)}>
             <Upload className="w-4 h-4 mr-1" />
-            {t('knowledge:document.document.upload')}
+            {t('document.document.upload')}
           </Button>
         )}
       </div>
@@ -251,7 +251,7 @@ export function DocumentList({ knowledgeBase, onBack, canManage = true }: Docume
           {canManage && selectedIds.size > 0 && (
             <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/5 border border-primary/20 rounded-lg">
               <span className="text-sm text-text-primary">
-                {t('knowledge:document.document.batch.selected', { count: selectedIds.size })}
+                {t('document.document.batch.selected', { count: selectedIds.size })}
               </span>
               <div className="flex-1" />
               <Button
@@ -261,7 +261,7 @@ export function DocumentList({ knowledgeBase, onBack, canManage = true }: Docume
                 disabled={batchLoading}
               >
                 <Trash2 className="w-4 h-4 mr-1" />
-                {t('knowledge:document.document.batch.delete')}
+                {t('document.document.batch.delete')}
               </Button>
             </div>
           )}
@@ -285,30 +285,30 @@ export function DocumentList({ knowledgeBase, onBack, canManage = true }: Docume
                 className="flex-1 min-w-[120px] cursor-pointer hover:text-text-primary select-none"
                 onClick={() => handleSort('name')}
               >
-                {t('knowledge:document.document.columns.name')}
+                {t('document.document.columns.name')}
                 <SortIcon field="name" />
               </div>
               {/* Spacer to match DocumentItem middle area */}
               <div className="w-48 flex-shrink-0" />
               <div className="w-20 flex-shrink-0 text-center">
-                {t('knowledge:document.document.columns.type')}
+                {t('document.document.columns.type')}
               </div>
               <div
                 className="w-20 flex-shrink-0 text-center cursor-pointer hover:text-text-primary select-none"
                 onClick={() => handleSort('size')}
               >
-                {t('knowledge:document.document.columns.size')}
+                {t('document.document.columns.size')}
                 <SortIcon field="size" />
               </div>
               <div
                 className="w-40 flex-shrink-0 text-center cursor-pointer hover:text-text-primary select-none"
                 onClick={() => handleSort('date')}
               >
-                {t('knowledge:document.document.columns.date')}
+                {t('document.document.columns.date')}
                 <SortIcon field="date" />
               </div>
               <div className="w-16 flex-shrink-0 text-center">
-                {t('knowledge:document.document.columns.indexStatus')}
+                {t('document.document.columns.indexStatus')}
               </div>
               {canManage && (
                 <div className="w-16 flex-shrink-0 text-center">
@@ -334,19 +334,17 @@ export function DocumentList({ knowledgeBase, onBack, canManage = true }: Docume
       ) : searchQuery ? (
         <div className="flex flex-col items-center justify-center py-12 text-text-secondary">
           <FileText className="w-12 h-12 mb-4 opacity-50" />
-          <p>{t('knowledge:document.document.noResults')}</p>
+          <p>{t('document.document.noResults')}</p>
         </div>
       ) : canManage ? (
         <div className="flex flex-col items-center justify-center py-16 text-text-secondary">
           <FileUp className="w-16 h-16 mb-4 text-text-muted opacity-60" />
-          <p className="text-base text-text-primary mb-2">
-            {t('knowledge:document.document.emptyHint')}
-          </p>
+          <p className="text-base text-text-primary mb-2">{t('document.document.emptyHint')}</p>
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-12 text-text-secondary">
           <FileText className="w-12 h-12 mb-4 opacity-50" />
-          <p>{t('knowledge:document.document.empty')}</p>
+          <p>{t('document.document.empty')}</p>
         </div>
       )}
 

@@ -123,12 +123,12 @@ class BaseStorageBackend(ABC):
                 raise ValueError(f"rollingStep must be a positive integer, got: {step}")
 
             # Deterministic hash-based sharding using MD5
-            # 1. Hash the knowledge_id to get a large integer
+            # 1. Hash the knowledge_id to get a large integer (MD5 produces 128-bit hash)
             hash_val = int(hashlib.md5(knowledge_id.encode()).hexdigest(), 16)
             # 2. Floor divide by step to get bucket number, then multiply by step
-            #    This ensures index names are: 0, step, 2*step, 3*step, ...
-            #    e.g., step=10: hash 0-9 -> index_0, hash 10-19 -> index_10, etc.
-            #    Index count grows infinitely as more knowledge_ids are added
+            #    This groups knowledge_ids into buckets based on their hash values
+            #    Index names follow pattern: prefix_index_N where N is a multiple of step
+            #    The hash space is very large (~3.4x10^38), allowing virtually unlimited buckets
             index_base = (hash_val // step) * step
             index_name = f"{prefix}_{self.INDEX_PREFIX}_{index_base}"
 

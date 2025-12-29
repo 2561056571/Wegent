@@ -3,6 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { apiClient } from './client';
+import { RetrieverCRD } from './retrievers';
+
+// Re-export RetrieverCRD for backward compatibility
+export type { RetrieverCRD } from './retrievers';
 
 // Admin User Types
 export type UserRole = 'admin' | 'user';
@@ -131,40 +135,6 @@ export interface AdminPublicRetriever {
 export interface AdminPublicRetrieverListResponse {
   total: number;
   items: AdminPublicRetriever[];
-}
-
-export interface RetrieverCRD {
-  apiVersion?: string;
-  kind?: string;
-  metadata: {
-    name: string;
-    namespace: string;
-    displayName?: string;
-  };
-  spec: {
-    storageConfig: {
-      type: string;
-      url: string;
-      username?: string;
-      password?: string;
-      apiKey?: string;
-      indexStrategy: {
-        mode: string;
-        fixedName?: string;
-        rollingStep?: number;
-        prefix?: string;
-      };
-      ext?: Record<string, unknown>;
-    };
-    retrievalMethods?: Record<
-      string,
-      {
-        enabled: boolean;
-        defaultWeight?: number;
-      }
-    >;
-    description?: string;
-  };
 }
 
 // Admin API Services

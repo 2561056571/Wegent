@@ -36,6 +36,8 @@ from app.schemas.admin import (
     PublicModelListResponse,
     PublicModelResponse,
     PublicModelUpdate,
+    PublicRetrieverListResponse,
+    PublicRetrieverResponse,
     QuickAccessResponse,
     QuickAccessTeam,
     RoleUpdate,
@@ -43,9 +45,10 @@ from app.schemas.admin import (
     SystemConfigUpdate,
     SystemStats,
 )
-from app.schemas.kind import BatchResponse
+from app.schemas.kind import BatchResponse, Retriever
 from app.schemas.task import TaskCreate, TaskInDB
 from app.schemas.user import Token, UserInDB, UserInfo
+from app.services.adapters.public_retriever import public_retriever_service
 from app.services.adapters.task_kinds import task_kinds_service
 from app.services.k_batch import batch_service
 from app.services.kind import kind_service
@@ -1238,10 +1241,6 @@ async def update_slogan_tips_config(
 
 # ==================== Public Retriever Management Endpoints ====================
 
-from app.schemas.admin import PublicRetrieverListResponse, PublicRetrieverResponse
-from app.schemas.kind import Retriever
-from app.services.adapters.public_retriever import public_retriever_service
-
 
 @router.get("/public-retrievers", response_model=PublicRetrieverListResponse)
 async def list_public_retrievers(
@@ -1253,7 +1252,9 @@ async def list_public_retrievers(
     """
     Get list of all public retrievers with pagination
     """
-    total = public_retriever_service.count_active_retrievers(db, current_user=current_user)
+    total = public_retriever_service.count_active_retrievers(
+        db, current_user=current_user
+    )
     skip = (page - 1) * limit
     retrievers = public_retriever_service.get_retrievers(
         db, skip=skip, limit=limit, current_user=current_user
@@ -1320,7 +1321,10 @@ async def update_public_retriever(
     Update a public retriever (admin only)
     """
     result = public_retriever_service.update_retriever(
-        db, retriever_id=retriever_id, retriever=retriever_data, current_user=current_user
+        db,
+        retriever_id=retriever_id,
+        retriever=retriever_data,
+        current_user=current_user,
     )
     return PublicRetrieverResponse(
         id=result["id"],
@@ -1336,7 +1340,9 @@ async def update_public_retriever(
     )
 
 
-@router.delete("/public-retrievers/{retriever_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/public-retrievers/{retriever_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 async def delete_public_retriever(
     retriever_id: int = Path(..., description="Retriever ID"),
     db: Session = Depends(get_db),

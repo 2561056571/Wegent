@@ -8,23 +8,11 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tag } from '@/components/ui/tag';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   CircleStackIcon,
   PencilIcon,
   TrashIcon,
   GlobeAltIcon,
-  EyeIcon,
-  EyeSlashIcon,
   BeakerIcon,
 } from '@heroicons/react/24/outline';
 import { Loader2 } from 'lucide-react';
@@ -51,69 +39,38 @@ import {
 import { adminApis, AdminPublicRetriever, RetrieverCRD } from '@/apis/admin';
 import { retrieverApis, RetrievalMethodType } from '@/apis/retrievers';
 import UnifiedAddButton from '@/components/common/UnifiedAddButton';
+import {
+  RetrieverFormFields,
+  RetrieverFormData,
+  defaultFormData,
+  STORAGE_TYPE_CONFIG,
+  IndexModeType,
+} from './RetrieverFormFields';
 
-// Storage type configuration for extensibility
-const STORAGE_TYPE_CONFIG = {
-  elasticsearch: {
-    defaultUrl: 'http://elasticsearch:9200',
-    recommendedIndexMode: 'per_user' as const,
-    authFields: {
-      supportsUsernamePassword: true,
-      supportsApiKey: false,
-    },
-    fallbackRetrievalMethods: ['vector', 'keyword', 'hybrid'] as const,
-  },
-  qdrant: {
-    defaultUrl: 'http://localhost:6333',
-    recommendedIndexMode: 'per_dataset' as const,
-    authFields: {
-      supportsUsernamePassword: false,
-      supportsApiKey: true,
-    },
-    fallbackRetrievalMethods: ['vector'] as const,
-  },
-} as const;
+/**
+ * Kubernetes-style resource name validation pattern.
+ * Rules:
+ * - Must start and end with alphanumeric character (a-z, 0-9)
+ * - May contain hyphens (-) in the middle
+ * - Single character names are allowed (just alphanumeric)
+ * - Examples: "my-retriever", "retriever1", "a", "my-test-retriever-01"
+ */
+const KUBERNETES_NAME_REGEX = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
 
-// Retrieval method labels for display
-const RETRIEVAL_METHOD_LABELS: Record<string, string> = {
-  vector: 'common:retrievers.retrieval_method_vector',
-  keyword: 'common:retrievers.retrieval_method_keyword',
-  hybrid: 'common:retrievers.retrieval_method_hybrid',
-};
+/**
+ * Default weights for hybrid retrieval methods.
+ * Vector search typically has higher weight as it captures semantic meaning.
+ * Keyword search complements with exact term matching.
+ * Total should sum to 1.0 for normalized scoring.
+ */
+const DEFAULT_VECTOR_WEIGHT = 0.7;
+const DEFAULT_KEYWORD_WEIGHT = 0.3;
 
-type IndexModeType = 'fixed' | 'rolling' | 'per_dataset' | 'per_user';
-
-interface RetrieverFormData {
-  name: string;
-  displayName: string;
-  namespace: string;
-  storageType: 'elasticsearch' | 'qdrant';
-  url: string;
-  username: string;
-  password: string;
-  apiKey: string;
-  indexMode: IndexModeType;
-  fixedName: string;
-  rollingStep: string;
-  prefix: string;
-  enabledRetrievalMethods: RetrievalMethodType[];
-}
-
-const defaultFormData: RetrieverFormData = {
-  name: '',
-  displayName: '',
-  namespace: 'default',
-  storageType: 'elasticsearch',
-  url: '',
-  username: '',
-  password: '',
-  apiKey: '',
-  indexMode: 'per_user',
-  fixedName: '',
-  rollingStep: '5000',
-  prefix: 'wegent',
-  enabledRetrievalMethods: ['vector', 'keyword', 'hybrid'],
-};
+/**
+ * Default page size for fetching public retrievers.
+ * Using a larger value to minimize pagination requests in admin view.
+ */
+const DEFAULT_PAGE_SIZE = 100;
 
 const PublicRetrieverList: React.FC = () => {
   const { t } = useTranslation(['admin', 'common', 'wizard']);
@@ -145,7 +102,7 @@ const PublicRetrieverList: React.FC = () => {
   const fetchRetrievers = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await adminApis.getPublicRetrievers(page, 100);
+      const response = await adminApis.getPublicRetrievers(page, DEFAULT_PAGE_SIZE);
       setRetrievers(response.items);
       setTotal(response.total);
     } catch (_error) {
@@ -209,11 +166,11 @@ const PublicRetrieverList: React.FC = () => {
     const retrievalMethodsConfig: RetrieverCRD['spec']['retrievalMethods'] = {
       vector: {
         enabled: data.enabledRetrievalMethods.includes('vector'),
-        defaultWeight: 0.7,
+        defaultWeight: DEFAULT_VECTOR_WEIGHT,
       },
       keyword: {
         enabled: data.enabledRetrievalMethods.includes('keyword'),
-        defaultWeight: 0.3,
+        defaultWeight: DEFAULT_KEYWORD_WEIGHT,
       },
       hybrid: {
         enabled: data.enabledRetrievalMethods.includes('hybrid'),
@@ -336,71 +293,62 @@ const PublicRetrieverList: React.FC = () => {
     }
   };
 
-  const validateForm = (): boolean => {
+  // Validation helper: show error toast and return false
+  const showValidationError = (title: string, description?: string): false => {
+    toast({ variant: 'destructive', title, description });
+    return false;
+  };
+
+  // Validate retriever name (required + Kubernetes naming convention)
+  const validateName = (): boolean => {
     if (!formData.name.trim()) {
-      toast({
-        variant: 'destructive',
-        title: t('admin:public_retrievers.errors.name_required'),
-      });
-      return false;
+      return showValidationError(t('admin:public_retrievers.errors.name_required'));
     }
-
-    const nameRegex = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
-    if (!nameRegex.test(formData.name)) {
-      toast({
-        variant: 'destructive',
-        title: t('common:retrievers.name_invalid'),
-        description: t('common:retrievers.name_invalid_hint'),
-      });
-      return false;
+    if (!KUBERNETES_NAME_REGEX.test(formData.name)) {
+      return showValidationError(
+        t('common:retrievers.name_invalid'),
+        t('common:retrievers.name_invalid_hint')
+      );
     }
+    return true;
+  };
 
+  // Validate URL (required)
+  const validateUrl = (): boolean => {
     if (!formData.url.trim()) {
-      toast({
-        variant: 'destructive',
-        title: t('admin:public_retrievers.errors.url_required'),
-      });
-      return false;
+      return showValidationError(t('admin:public_retrievers.errors.url_required'));
+    }
+    return true;
+  };
+
+  // Validate index strategy specific fields
+  const validateIndexStrategy = (): boolean => {
+    const { indexMode, fixedName, rollingStep, prefix } = formData;
+
+    if (indexMode === 'fixed' && !fixedName.trim()) {
+      return showValidationError(t('common:retrievers.fixed_index_name_empty'));
     }
 
-    if (formData.indexMode === 'fixed' && !formData.fixedName.trim()) {
-      toast({
-        variant: 'destructive',
-        title: t('common:retrievers.fixed_index_name_empty'),
-      });
-      return false;
-    }
-
-    if (formData.indexMode === 'rolling') {
-      const step = parseInt(formData.rollingStep);
+    if (indexMode === 'rolling') {
+      const step = parseInt(rollingStep);
       if (isNaN(step) || step <= 0) {
-        toast({
-          variant: 'destructive',
-          title: t('common:retrievers.rolling_step_invalid'),
-        });
-        return false;
+        return showValidationError(t('common:retrievers.rolling_step_invalid'));
       }
-      if (!formData.prefix.trim()) {
-        toast({
-          variant: 'destructive',
-          title: t('common:retrievers.rolling_prefix_required'),
-        });
-        return false;
+      if (!prefix.trim()) {
+        return showValidationError(t('common:retrievers.rolling_prefix_required'));
       }
     }
 
-    if (
-      (formData.indexMode === 'per_dataset' || formData.indexMode === 'per_user') &&
-      !formData.prefix.trim()
-    ) {
-      toast({
-        variant: 'destructive',
-        title: t('common:retrievers.per_dataset_prefix_required'),
-      });
-      return false;
+    if ((indexMode === 'per_dataset' || indexMode === 'per_user') && !prefix.trim()) {
+      return showValidationError(t('common:retrievers.per_dataset_prefix_required'));
     }
 
     return true;
+  };
+
+  // Main form validation - combines all validators
+  const validateForm = (): boolean => {
+    return validateName() && validateUrl() && validateIndexStrategy();
   };
 
   const handleCreateRetriever = async () => {
@@ -503,280 +451,6 @@ const PublicRetrieverList: React.FC = () => {
     if (storageType === 'qdrant') return 'Qdrant';
     return storageType;
   };
-
-  const RetrieverFormFields = () => (
-    <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
-      {/* Retriever Name and Display Name */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="name" className="text-sm font-medium">
-            {t('admin:public_retrievers.form.name')} *
-          </Label>
-          <Input
-            id="name"
-            value={formData.name}
-            onChange={e => setFormData({ ...formData, name: e.target.value })}
-            placeholder={t('admin:public_retrievers.form.name_placeholder')}
-            disabled={isEditDialogOpen}
-            className="bg-base"
-          />
-          <p className="text-xs text-text-muted">
-            {isEditDialogOpen
-              ? t('common:retrievers.retriever_id_readonly')
-              : t('common:retrievers.retriever_id_hint')}
-          </p>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="displayName" className="text-sm font-medium">
-            {t('admin:public_retrievers.form.display_name')}
-          </Label>
-          <Input
-            id="displayName"
-            value={formData.displayName}
-            onChange={e => setFormData({ ...formData, displayName: e.target.value })}
-            placeholder={t('admin:public_retrievers.form.display_name_placeholder')}
-            className="bg-base"
-          />
-        </div>
-      </div>
-
-      {/* Storage Type */}
-      <div className="space-y-2">
-        <Label htmlFor="storageType" className="text-sm font-medium">
-          {t('admin:public_retrievers.form.storage_type')} *
-        </Label>
-        <Select value={formData.storageType} onValueChange={handleStorageTypeChange}>
-          <SelectTrigger className="bg-base">
-            <SelectValue placeholder={t('admin:public_retrievers.form.storage_type_placeholder')} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="elasticsearch">Elasticsearch</SelectItem>
-            <SelectItem value="qdrant">Qdrant</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* URL */}
-      <div className="space-y-2">
-        <Label htmlFor="url" className="text-sm font-medium">
-          {t('admin:public_retrievers.form.url')} *
-        </Label>
-        <Input
-          id="url"
-          value={formData.url}
-          onChange={e => setFormData({ ...formData, url: e.target.value })}
-          placeholder={t('admin:public_retrievers.form.url_placeholder')}
-          className="bg-base"
-        />
-        <p className="text-xs text-text-muted">
-          {formData.storageType === 'elasticsearch'
-            ? t('common:retrievers.connection_url_hint_es')
-            : t('common:retrievers.connection_url_hint_qdrant')}
-        </p>
-      </div>
-
-      {/* Authentication - Username/Password (Elasticsearch) */}
-      {STORAGE_TYPE_CONFIG[formData.storageType].authFields.supportsUsernamePassword && (
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="username" className="text-sm font-medium">
-              {t('admin:public_retrievers.form.username')}
-            </Label>
-            <Input
-              id="username"
-              value={formData.username}
-              onChange={e => setFormData({ ...formData, username: e.target.value })}
-              placeholder={t('admin:public_retrievers.form.username_placeholder')}
-              className="bg-base"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password" className="text-sm font-medium">
-              {t('common:retrievers.password')}
-            </Label>
-            <div className="relative">
-              <Input
-                id="password"
-                type={showPassword ? 'text' : 'password'}
-                value={formData.password}
-                onChange={e => setFormData({ ...formData, password: e.target.value })}
-                placeholder={t('common:retrievers.password_placeholder')}
-                className="bg-base pr-10"
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7"
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? (
-                  <EyeSlashIcon className="w-4 h-4" />
-                ) : (
-                  <EyeIcon className="w-4 h-4" />
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Authentication - API Key (Qdrant) */}
-      {STORAGE_TYPE_CONFIG[formData.storageType].authFields.supportsApiKey && (
-        <div className="space-y-2">
-          <Label htmlFor="apiKey" className="text-sm font-medium">
-            {t('admin:public_retrievers.form.api_key')}
-          </Label>
-          <div className="relative">
-            <Input
-              id="apiKey"
-              type={showApiKey ? 'text' : 'password'}
-              value={formData.apiKey}
-              onChange={e => setFormData({ ...formData, apiKey: e.target.value })}
-              placeholder={t('admin:public_retrievers.form.api_key_placeholder')}
-              className="bg-base pr-10"
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7"
-              onClick={() => setShowApiKey(!showApiKey)}
-            >
-              {showApiKey ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Index Strategy */}
-      <div className="space-y-2">
-        <Label htmlFor="indexMode" className="text-sm font-medium">
-          {t('admin:public_retrievers.form.index_strategy')} *
-        </Label>
-        <Select
-          value={formData.indexMode}
-          onValueChange={(value: string) =>
-            setFormData({ ...formData, indexMode: value as IndexModeType })
-          }
-        >
-          <SelectTrigger className="bg-base">
-            <SelectValue
-              placeholder={t('admin:public_retrievers.form.index_strategy_placeholder')}
-            />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="per_user">
-              {t('common:retrievers.index_strategy_per_user')}
-              {STORAGE_TYPE_CONFIG[formData.storageType].recommendedIndexMode === 'per_user' &&
-                ` (${t('wizard:recommended')})`}
-            </SelectItem>
-            <SelectItem value="per_dataset">
-              {t('common:retrievers.index_strategy_per_dataset')}
-              {STORAGE_TYPE_CONFIG[formData.storageType].recommendedIndexMode === 'per_dataset' &&
-                ` (${t('wizard:recommended')})`}
-            </SelectItem>
-            <SelectItem value="fixed">{t('common:retrievers.index_strategy_fixed')}</SelectItem>
-            <SelectItem value="rolling">{t('common:retrievers.index_strategy_rolling')}</SelectItem>
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-text-muted">
-          {formData.indexMode === 'per_user' && t('common:retrievers.index_strategy_per_user_desc')}
-          {formData.indexMode === 'per_dataset' &&
-            t('common:retrievers.index_strategy_per_dataset_desc')}
-          {formData.indexMode === 'fixed' && t('common:retrievers.index_strategy_fixed_desc')}
-          {formData.indexMode === 'rolling' && t('common:retrievers.index_strategy_rolling_desc')}
-        </p>
-      </div>
-
-      {/* Index Strategy Fields */}
-      {formData.indexMode === 'fixed' && (
-        <div className="space-y-2">
-          <Label htmlFor="fixedName" className="text-sm font-medium">
-            {t('admin:public_retrievers.form.fixed_name')} *
-          </Label>
-          <Input
-            id="fixedName"
-            value={formData.fixedName}
-            onChange={e => setFormData({ ...formData, fixedName: e.target.value })}
-            placeholder={t('admin:public_retrievers.form.fixed_name_placeholder')}
-            className="bg-base"
-          />
-        </div>
-      )}
-
-      {formData.indexMode === 'rolling' && (
-        <div className="space-y-2">
-          <Label htmlFor="rollingStep" className="text-sm font-medium">
-            {t('common:retrievers.rolling_step_required')}
-          </Label>
-          <Input
-            id="rollingStep"
-            type="number"
-            value={formData.rollingStep}
-            onChange={e => setFormData({ ...formData, rollingStep: e.target.value })}
-            placeholder={t('common:retrievers.rolling_step_placeholder')}
-            className="bg-base"
-          />
-          <p className="text-xs text-text-muted">{t('common:retrievers.rolling_step_hint')}</p>
-        </div>
-      )}
-
-      {(formData.indexMode === 'rolling' ||
-        formData.indexMode === 'per_dataset' ||
-        formData.indexMode === 'per_user') && (
-        <div className="space-y-2">
-          <Label htmlFor="prefix" className="text-sm font-medium">
-            {t('admin:public_retrievers.form.prefix')} *
-          </Label>
-          <Input
-            id="prefix"
-            value={formData.prefix}
-            onChange={e => setFormData({ ...formData, prefix: e.target.value })}
-            placeholder={t('admin:public_retrievers.form.prefix_placeholder')}
-            className="bg-base"
-          />
-          <p className="text-xs text-text-muted">{t('common:retrievers.index_prefix_hint')}</p>
-        </div>
-      )}
-
-      {/* Retrieval Methods */}
-      <div className="space-y-2">
-        <Label className="text-sm font-medium">{t('common:retrievers.retrieval_methods')}</Label>
-        <div className="flex flex-wrap gap-4">
-          {loadingRetrievalMethods ? (
-            <div className="flex items-center gap-2 text-text-muted">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span className="text-sm">{t('common:retrievers.loading_retrieval_methods')}</span>
-            </div>
-          ) : (
-            availableRetrievalMethods.map(method => (
-              <div key={method} className="flex items-center space-x-2">
-                <Checkbox
-                  id={`retrieval-method-${method}`}
-                  checked={formData.enabledRetrievalMethods.includes(method)}
-                  onCheckedChange={checked =>
-                    handleRetrievalMethodToggle(method, checked as boolean)
-                  }
-                  disabled={
-                    formData.enabledRetrievalMethods.length === 1 &&
-                    formData.enabledRetrievalMethods.includes(method)
-                  }
-                />
-                <Label
-                  htmlFor={`retrieval-method-${method}`}
-                  className="text-sm font-normal cursor-pointer"
-                >
-                  {t(RETRIEVAL_METHOD_LABELS[method] || method)}
-                </Label>
-              </div>
-            ))
-          )}
-        </div>
-        <p className="text-xs text-text-muted">{t('common:retrievers.retrieval_methods_hint')}</p>
-      </div>
-    </div>
-  );
 
   return (
     <div className="space-y-3">
@@ -884,7 +558,19 @@ const PublicRetrieverList: React.FC = () => {
             <DialogTitle>{t('admin:public_retrievers.create_retriever')}</DialogTitle>
             <DialogDescription>{t('admin:public_retrievers.description')}</DialogDescription>
           </DialogHeader>
-          <RetrieverFormFields />
+          <RetrieverFormFields
+            formData={formData}
+            setFormData={setFormData}
+            isEditDialogOpen={false}
+            availableRetrievalMethods={availableRetrievalMethods}
+            loadingRetrievalMethods={loadingRetrievalMethods}
+            showPassword={showPassword}
+            setShowPassword={setShowPassword}
+            showApiKey={showApiKey}
+            setShowApiKey={setShowApiKey}
+            handleStorageTypeChange={handleStorageTypeChange}
+            handleRetrievalMethodToggle={handleRetrievalMethodToggle}
+          />
           <DialogFooter className="flex items-center justify-between sm:justify-between">
             <Button
               variant="outline"
@@ -914,7 +600,19 @@ const PublicRetrieverList: React.FC = () => {
           <DialogHeader>
             <DialogTitle>{t('admin:public_retrievers.edit_retriever')}</DialogTitle>
           </DialogHeader>
-          <RetrieverFormFields />
+          <RetrieverFormFields
+            formData={formData}
+            setFormData={setFormData}
+            isEditDialogOpen={true}
+            availableRetrievalMethods={availableRetrievalMethods}
+            loadingRetrievalMethods={loadingRetrievalMethods}
+            showPassword={showPassword}
+            setShowPassword={setShowPassword}
+            showApiKey={showApiKey}
+            setShowApiKey={setShowApiKey}
+            handleStorageTypeChange={handleStorageTypeChange}
+            handleRetrievalMethodToggle={handleRetrievalMethodToggle}
+          />
           <DialogFooter className="flex items-center justify-between sm:justify-between">
             <Button
               variant="outline"
