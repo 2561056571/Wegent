@@ -29,7 +29,7 @@ export function DocumentItem({
   selected = false,
   onSelect,
 }: DocumentItemProps) {
-  const { t } = useTranslation('knowledge');
+  const { t } = useTranslation();
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -120,8 +120,8 @@ export function DocumentItem({
       <div className="w-16 flex-shrink-0 text-center">
         <Badge variant={document.is_active ? 'success' : 'warning'} size="sm">
           {document.is_active
-            ? t('document.document.indexStatus.available')
-            : t('document.document.indexStatus.unavailable')}
+            ? t('knowledge:document.document.indexStatus.available')
+            : t('knowledge:document.document.indexStatus.unavailable')}
         </Badge>
       </div>
 

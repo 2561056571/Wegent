@@ -6,7 +6,7 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useTaskContext } from '../../contexts/taskContext';
-import type { TaskDetail, TaskDetailSubtask, Team, GitRepoInfo, GitBranch } from '@/types/api';
+import type { TaskDetail, Team, GitRepoInfo, GitBranch } from '@/types/api';
 import { Share2, FileText, ChevronDown, Download, MessageSquare, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -85,7 +85,7 @@ function StreamingMessageBubble({
     type: 'ai' as const,
     content: '${$$}$' + (message.content || ''),
     timestamp: message.timestamp,
-    botName: message.botName || selectedTeam?.name || t('messages.bot') || 'Bot',
+    botName: message.botName || selectedTeam?.name || t('common:messages.bot') || 'Bot',
     subtaskStatus: 'RUNNING',
     recoveredContent: isStreaming ? displayContent : hasContent ? message.content : undefined,
     isRecovered: false,
@@ -142,8 +142,7 @@ export default function MessagesArea({
   correctionModelId = null,
   enableCorrectionWebSearch = false,
 }: MessagesAreaProps) {
-  const { t } = useTranslation('chat');
-  const { t: tCommon } = useTranslation('common');
+  const { t } = useTranslation();
   const { toast } = useToast();
   const { selectedTaskDetail, refreshSelectedTaskDetail, refreshTasks, setSelectedTask } =
     useTaskContext();
@@ -438,8 +437,8 @@ export default function MessagesArea({
     if (!selectedTaskDetail?.id) {
       toast({
         variant: 'destructive',
-        title: tCommon('shared_task.no_task_selected'),
-        description: tCommon('shared_task.no_task_selected_desc'),
+        title: t('shared-task:no_task_selected'),
+        description: t('shared-task:no_task_selected_desc'),
       });
       return;
     }
@@ -461,8 +460,8 @@ export default function MessagesArea({
           console.error('Failed to share task:', err);
           toast({
             variant: 'destructive',
-            title: tCommon('shared_task.share_failed'),
-            description: (err as Error)?.message || tCommon('shared_task.share_failed_desc'),
+            title: t('shared-task:share_failed'),
+            description: (err as Error)?.message || t('shared-task:share_failed_desc'),
           });
           throw err;
         } finally {
@@ -475,7 +474,7 @@ export default function MessagesArea({
     selectedTaskDetail?.title,
     selectedTaskDetail?.status,
     toast,
-    tCommon,
+    t,
     traceAction,
   ]);
 
@@ -485,55 +484,46 @@ export default function MessagesArea({
       if (!selectedTaskDetail?.id) {
         toast({
           variant: 'destructive',
-          title: tCommon('shared_task.no_task_selected'),
-          description: tCommon('shared_task.no_task_selected_desc'),
+          title: t('shared-task:no_task_selected'),
+          description: t('shared-task:no_task_selected_desc'),
         });
         return;
       }
 
-      // Convert subtasks to selectable messages
-      const messages: SelectableMessage[] = selectedTaskDetail.subtasks
-        ? selectedTaskDetail.subtasks.map((sub: TaskDetailSubtask) => {
-            const isUser = sub.role === 'USER';
-            let content = sub.prompt || '';
+      // Use the messages from useUnifiedMessages which includes WebSocket updates
+      // This is the SAME data that's displayed in the UI
+      const exportableMessages: SelectableMessage[] = messages
+        .filter(msg => msg.status === 'completed') // Only export completed messages
+        .map(msg => {
+          // Remove markdown prefix from AI messages if present
+          let content = msg.content;
+          if (msg.type === 'ai' && content.startsWith('${$$}$')) {
+            content = content.substring(6);
+          }
 
-            if (!isUser && sub.result) {
-              if (typeof sub.result === 'object' && 'value' in sub.result) {
-                const value = (sub.result as { value?: unknown }).value;
-                if (typeof value === 'string') {
-                  content = value;
-                } else if (value !== null && value !== undefined) {
-                  content = JSON.stringify(value);
-                }
-              } else if (typeof sub.result === 'string') {
-                content = sub.result;
-              }
-            }
+          return {
+            id: msg.subtaskId?.toString() || msg.id,
+            type: msg.type,
+            content,
+            timestamp: msg.timestamp,
+            botName: msg.botName || selectedTaskDetail?.team?.name || 'Bot',
+            userName: msg.senderUserName || selectedTaskDetail?.user?.user_name,
+            teamName: selectedTaskDetail?.team?.name,
+            attachments: msg.attachments?.map(att => ({
+              id: att.id,
+              filename: att.filename,
+              file_size: att.file_size,
+              file_extension: att.file_extension,
+            })),
+          };
+        });
 
-            return {
-              id: sub.id,
-              type: isUser ? ('user' as const) : ('ai' as const),
-              content,
-              timestamp: new Date(sub.updated_at).getTime(),
-              botName: sub.bots?.[0]?.name || 'Bot',
-              userName: sub.sender_user_name || selectedTaskDetail?.user?.user_name,
-              teamName: selectedTaskDetail?.team?.name,
-              attachments: sub.attachments?.map(att => ({
-                id: att.id,
-                filename: att.filename,
-                file_size: att.file_size,
-                file_extension: att.file_extension,
-              })),
-            };
-          })
-        : [];
-
-      const validMessages = messages.filter(msg => msg.content.trim() !== '');
+      const validMessages = exportableMessages.filter(msg => msg.content.trim() !== '');
 
       if (validMessages.length === 0) {
         toast({
           variant: 'destructive',
-          title: t('export.no_messages') || 'No messages to export',
+          title: t('chat:export.no_messages') || 'No messages to export',
         });
         return;
       }
@@ -542,7 +532,7 @@ export default function MessagesArea({
       setExportFormat(format);
       setShowExportModal(true);
     },
-    [selectedTaskDetail, toast, t, tCommon]
+    [selectedTaskDetail, messages, toast, t]
   );
 
   // Handle PDF export - open modal
@@ -598,7 +588,7 @@ export default function MessagesArea({
             className="flex items-center gap-1 h-8 pl-2 pr-3 rounded-[7px] text-sm"
           >
             <Users className="h-3.5 w-3.5" />
-            {t('groupChat.members.title') || 'Members'}
+            {t('common:groupChat.members.title') || 'Members'}
           </Button>
         )}
 
@@ -612,7 +602,7 @@ export default function MessagesArea({
             className="flex items-center gap-1 h-8 pl-2 pr-3 rounded-[7px] text-sm"
           >
             <Share2 className="h-3.5 w-3.5" />
-            {isSharing ? tCommon('shared_task.sharing') : tCommon('shared_task.share_link')}
+            {isSharing ? t('shared-task:sharing') : t('shared-task:share_link')}
           </Button>
         )}
 
@@ -624,7 +614,7 @@ export default function MessagesArea({
               className="flex items-center gap-1 h-8 pl-2 pr-3 rounded-[7px] text-sm"
             >
               <Download className="h-3.5 w-3.5" />
-              {t('export.export')}
+              {t('chat:export.export')}
               <ChevronDown className="h-3 w-3 ml-0.5" />
             </Button>
           </DropdownMenuTrigger>
@@ -634,14 +624,14 @@ export default function MessagesArea({
               className="flex items-center gap-2 cursor-pointer"
             >
               <FileText className="h-4 w-4" />
-              <span>{tCommon('shared_task.share_pdf')}</span>
+              <span>{t('chat:export.export_pdf')}</span>
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={handleExportDocx}
               className="flex items-center gap-2 cursor-pointer"
             >
               <FileText className="h-4 w-4" />
-              <span>{t('export.export_docx') || 'Export DOCX'}</span>
+              <span>{t('chat:export.export_docx') || 'Export DOCX'}</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
 
@@ -657,7 +647,7 @@ export default function MessagesArea({
             className="flex items-center gap-1 h-8 pl-2 pr-3 rounded-[7px] text-sm"
           >
             <MessageSquare className="h-3.5 w-3.5" />
-            {tCommon('navigation.feedback')}
+            {t('common:navigation.feedback')}
           </Button>
         </DropdownMenu>
       </div>
@@ -672,7 +662,6 @@ export default function MessagesArea({
     handleExportPdf,
     handleExportDocx,
     t,
-    tCommon,
   ]);
 
   // Pass share button to parent for rendering in TopNavigation
@@ -872,9 +861,7 @@ export default function MessagesArea({
           messages={exportableMessages}
           taskId={selectedTaskDetail.id}
           taskName={
-            selectedTaskDetail?.title ||
-            selectedTaskDetail?.prompt?.slice(0, 50) ||
-            'Chat Export'
+            selectedTaskDetail?.title || selectedTaskDetail?.prompt?.slice(0, 50) || 'Chat Export'
           }
           exportFormat={exportFormat}
         />
