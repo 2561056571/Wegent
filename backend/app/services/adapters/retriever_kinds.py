@@ -131,11 +131,15 @@ class RetrieverKindsService(BaseService[Kind, Dict, Dict]):
                 .order_by(Kind.created_at.desc())
                 .all()
             )
+            logger.info(
+                f"Found {len(public_retrievers)} public retrievers for user_id={user_id}, scope={scope}"
+            )
             for r in public_retrievers:
                 # Only add if not already present (personal/group takes priority)
                 if r.name not in seen_names:
                     retrievers.append(r)
                     seen_names.add(r.name)
+                    logger.debug(f"Added public retriever: {r.name}")
 
         return [self._kind_to_summary(kind) for kind in retrievers]
 
