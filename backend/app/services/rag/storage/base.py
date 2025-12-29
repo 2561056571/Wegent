@@ -7,8 +7,11 @@ Base storage backend interface for RAG functionality.
 """
 
 import hashlib
+import logging
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 from llama_index.core.schema import BaseNode
 
@@ -96,6 +99,12 @@ class BaseStorageBackend(ABC):
         """
         mode = self.index_strategy.get("mode", "per_dataset")
 
+        # Debug logging for index strategy
+        logger.debug(
+            f"get_index_name called: knowledge_id={knowledge_id}, "
+            f"index_strategy={self.index_strategy}, mode={mode}"
+        )
+
         if mode == "fixed":
             fixed_name = self.index_strategy.get("fixedName")
             if not fixed_name:
@@ -108,15 +117,26 @@ class BaseStorageBackend(ABC):
             self._validate_knowledge_id(knowledge_id, mode)
             prefix = self._validate_prefix(mode)
 
-            # Validate rollingStep
-            step = self.index_strategy.get("rollingStep", 5000)
+            # Validate rollingStep (number of knowledge_ids per index bucket)
+            step = self.index_strategy.get("rollingStep", 10)
             if not isinstance(step, int) or step <= 0:
                 raise ValueError(f"rollingStep must be a positive integer, got: {step}")
 
             # Deterministic hash-based sharding using MD5
-            hash_val = int(hashlib.md5(knowledge_id.encode()).hexdigest(), 16) % 10000
+            # 1. Hash the knowledge_id to get a large integer
+            hash_val = int(hashlib.md5(knowledge_id.encode()).hexdigest(), 16)
+            # 2. Floor divide by step to get bucket number, then multiply by step
+            #    This ensures index names are: 0, step, 2*step, 3*step, ...
+            #    e.g., step=10: hash 0-9 -> index_0, hash 10-19 -> index_10, etc.
+            #    Index count grows infinitely as more knowledge_ids are added
             index_base = (hash_val // step) * step
-            return f"{prefix}_{self.INDEX_PREFIX}_{index_base}"
+            index_name = f"{prefix}_{self.INDEX_PREFIX}_{index_base}"
+
+            logger.debug(
+                f"Rolling index: step={step}, hash_val={hash_val}, "
+                f"index_base={index_base}, index_name={index_name}"
+            )
+            return index_name
         elif mode == "per_dataset":
             # Validate knowledge_id and prefix
             self._validate_knowledge_id(knowledge_id, mode)

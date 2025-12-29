@@ -232,13 +232,14 @@ class PublicRetrieverResponse(BaseModel):
     displayName: Optional[str] = None
     storageType: str
     description: Optional[str] = None
-    json: dict
+    retriever_json: dict = Field(..., alias="json", serialization_alias="json")
     is_active: bool
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+        populate_by_name = True
 
 
 class PublicRetrieverListResponse(BaseModel):

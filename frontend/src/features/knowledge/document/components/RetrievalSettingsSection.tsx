@@ -57,8 +57,19 @@ export function RetrievalSettingsSection({
   const [scoreThreshold, setScoreThreshold] = useState(config.score_threshold ?? 0.7);
   const [vectorWeight, setVectorWeight] = useState(config.hybrid_weights?.vector_weight ?? 0.7);
 
+  // Generate unique key for retriever (name + namespace)
+  const getRetrieverKey = (name: string, namespace: string) => `${name}@${namespace}`;
+
+  // Get current retriever key from config
+  const currentRetrieverKey =
+    config.retriever_name && config.retriever_namespace
+      ? getRetrieverKey(config.retriever_name, config.retriever_namespace)
+      : '';
+
   // Get available retrieval modes for selected retriever
-  const selectedRetriever = retrievers.find(r => r.name === config.retriever_name);
+  const selectedRetriever = retrievers.find(
+    r => getRetrieverKey(r.name, r.namespace) === currentRetrieverKey
+  );
   const availableModes = useMemo(() => {
     return selectedRetriever
       ? retrievalMethods[selectedRetriever.storageType] || ['vector']
@@ -79,17 +90,27 @@ export function RetrievalSettingsSection({
     }
   }, [availableModes, config, onChange, loadingRetrievers, loadingMethods, selectedRetriever]);
 
-  // Auto-select first retriever if data exists and no selection
+  // Auto-select retriever if data exists and no selection
+  // Priority depends on scope:
+  // - group scope: group > public
+  // - personal scope (default): user > public
   useEffect(() => {
     if (!loadingRetrievers && retrievers.length > 0 && !config.retriever_name) {
-      const firstRetriever = retrievers[0];
+      let selectedRetriever;
+      if (scope === 'group') {
+        // For group scope, prioritize group retrievers
+        selectedRetriever = retrievers.find(r => r.type === 'group') || retrievers[0];
+      } else {
+        // For personal scope (or default), prioritize user retrievers
+        selectedRetriever = retrievers.find(r => r.type === 'user') || retrievers[0];
+      }
       onChange({
         ...config,
-        retriever_name: firstRetriever.name,
-        retriever_namespace: firstRetriever.namespace,
+        retriever_name: selectedRetriever.name,
+        retriever_namespace: selectedRetriever.namespace,
       });
     }
-  }, [loadingRetrievers, retrievers, config.retriever_name]);
+  }, [loadingRetrievers, retrievers, config.retriever_name, scope]);
 
   // Auto-select first embedding model if data exists and no selection
   useEffect(() => {
@@ -106,7 +127,8 @@ export function RetrievalSettingsSection({
   }, [loadingModels, embeddingModels, config.embedding_config?.model_name]);
 
   const handleRetrieverChange = (value: string) => {
-    const retriever = retrievers.find(r => r.name === value);
+    // value is in format "name@namespace"
+    const retriever = retrievers.find(r => getRetrieverKey(r.name, r.namespace) === value);
     if (retriever) {
       onChange({
         ...config,
@@ -216,12 +238,12 @@ export function RetrievalSettingsSection({
         ) : (
           <>
             <SearchableSelect
-              value={config.retriever_name || ''}
+              value={currentRetrieverKey}
               onValueChange={handleRetrieverChange}
               placeholder={t('document.retrieval.retrieverSelect')}
               disabled={isRetrieverDisabled}
               items={retrievers.map(retriever => ({
-                value: retriever.name,
+                value: getRetrieverKey(retriever.name, retriever.namespace),
                 label: formatRetrieverLabel(retriever),
               }))}
             />

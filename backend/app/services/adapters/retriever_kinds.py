@@ -48,7 +48,8 @@ class RetrieverKindsService(BaseService[Kind, Dict, Dict]):
         - For group scope (namespace!='default'): query without user_id filter, plus public
           Group retrievers may be created by other users in the same group.
 
-        Priority: personal/group retrievers > public retrievers (same name)
+        Note: Public retrievers are always included, even if they have the same name as
+        personal/group retrievers. The frontend will display them in separate sections.
 
         Args:
             db: Database session
@@ -83,9 +84,8 @@ class RetrieverKindsService(BaseService[Kind, Dict, Dict]):
             raise ValueError(f"Invalid scope: {scope}")
 
         retrievers = []
-        seen_names = set()  # Track seen retriever names to handle priority
 
-        # Query personal retrievers (with user_id filter) - highest priority
+        # Query personal retrievers (with user_id filter)
         if personal_namespaces:
             personal_retrievers = (
                 db.query(Kind)
@@ -98,9 +98,7 @@ class RetrieverKindsService(BaseService[Kind, Dict, Dict]):
                 .order_by(Kind.created_at.desc())
                 .all()
             )
-            for r in personal_retrievers:
-                retrievers.append(r)
-                seen_names.add(r.name)
+            retrievers.extend(personal_retrievers)
 
         # Query group retrievers (without user_id filter)
         if group_namespaces:
@@ -114,11 +112,9 @@ class RetrieverKindsService(BaseService[Kind, Dict, Dict]):
                 .order_by(Kind.created_at.desc())
                 .all()
             )
-            for r in group_retrievers:
-                retrievers.append(r)
-                seen_names.add(r.name)
+            retrievers.extend(group_retrievers)
 
-        # Query public retrievers (user_id=0) - lowest priority
+        # Query public retrievers (user_id=0) - always include
         if include_public:
             public_retrievers = (
                 db.query(Kind)
@@ -134,12 +130,9 @@ class RetrieverKindsService(BaseService[Kind, Dict, Dict]):
             logger.info(
                 f"Found {len(public_retrievers)} public retrievers for user_id={user_id}, scope={scope}"
             )
-            for r in public_retrievers:
-                # Only add if not already present (personal/group takes priority)
-                if r.name not in seen_names:
-                    retrievers.append(r)
-                    seen_names.add(r.name)
-                    logger.debug(f"Added public retriever: {r.name}")
+            # Always include public retrievers, even if they have the same name
+            # as personal/group retrievers. Frontend displays them in separate sections.
+            retrievers.extend(public_retrievers)
 
         return [self._kind_to_summary(kind) for kind in retrievers]
 
@@ -200,7 +193,9 @@ class RetrieverKindsService(BaseService[Kind, Dict, Dict]):
                     Kind.is_active == True,
                 )
                 .filter((Kind.user_id == user_id) | (Kind.user_id == 0))
-                .order_by(Kind.user_id.desc())  # Prioritize user's retriever (user_id > 0)
+                .order_by(
+                    Kind.user_id.desc()
+                )  # Prioritize user's retriever (user_id > 0)
                 .first()
             )
         else:

@@ -122,7 +122,7 @@ export interface AdminPublicRetriever {
   displayName: string | null;
   storageType: string;
   description: string | null;
-  json: Record<string, unknown>;
+  json: RetrieverCRD;
   is_active: boolean;
   created_at: string;
   updated_at: string;

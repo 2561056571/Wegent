@@ -76,9 +76,9 @@ const STORAGE_TYPE_CONFIG = {
 
 // Retrieval method labels for display
 const RETRIEVAL_METHOD_LABELS: Record<string, string> = {
-  vector: 'retrievers.retrieval_method_vector',
-  keyword: 'retrievers.retrieval_method_keyword',
-  hybrid: 'retrievers.retrieval_method_hybrid',
+  vector: 'common:retrievers.retrieval_method_vector',
+  keyword: 'common:retrievers.retrieval_method_keyword',
+  hybrid: 'common:retrievers.retrieval_method_hybrid',
 };
 
 type IndexModeType = 'fixed' | 'rolling' | 'per_dataset' | 'per_user';
@@ -137,9 +137,9 @@ const PublicRetrieverList: React.FC = () => {
   const [showApiKey, setShowApiKey] = useState(false);
 
   // Retrieval methods state
-  const [availableRetrievalMethods, setAvailableRetrievalMethods] = useState<RetrievalMethodType[]>([
-    ...STORAGE_TYPE_CONFIG.elasticsearch.fallbackRetrievalMethods,
-  ]);
+  const [availableRetrievalMethods, setAvailableRetrievalMethods] = useState<RetrievalMethodType[]>(
+    [...STORAGE_TYPE_CONFIG.elasticsearch.fallbackRetrievalMethods]
+  );
   const [loadingRetrievalMethods, setLoadingRetrievalMethods] = useState(false);
 
   const fetchRetrievers = useCallback(async () => {
@@ -163,25 +163,22 @@ const PublicRetrieverList: React.FC = () => {
   }, [fetchRetrievers]);
 
   // Fetch retrieval methods for a storage type from API
-  const fetchRetrievalMethods = useCallback(
-    async (type: 'elasticsearch' | 'qdrant') => {
-      setLoadingRetrievalMethods(true);
-      try {
-        const response = await retrieverApis.getStorageTypeRetrievalMethods(type);
-        const methods = response.retrieval_methods as RetrievalMethodType[];
-        setAvailableRetrievalMethods(methods);
-        return methods;
-      } catch (error) {
-        console.error('Failed to fetch retrieval methods:', error);
-        const fallback = [...STORAGE_TYPE_CONFIG[type].fallbackRetrievalMethods];
-        setAvailableRetrievalMethods(fallback);
-        return fallback;
-      } finally {
-        setLoadingRetrievalMethods(false);
-      }
-    },
-    []
-  );
+  const fetchRetrievalMethods = useCallback(async (type: 'elasticsearch' | 'qdrant') => {
+    setLoadingRetrievalMethods(true);
+    try {
+      const response = await retrieverApis.getStorageTypeRetrievalMethods(type);
+      const methods = response.retrieval_methods as RetrievalMethodType[];
+      setAvailableRetrievalMethods(methods);
+      return methods;
+    } catch (error) {
+      console.error('Failed to fetch retrieval methods:', error);
+      const fallback = [...STORAGE_TYPE_CONFIG[type].fallbackRetrievalMethods];
+      setAvailableRetrievalMethods(fallback);
+      return fallback;
+    } finally {
+      setLoadingRetrievalMethods(false);
+    }
+  }, []);
 
   // Handle retrieval method toggle
   const handleRetrievalMethodToggle = useCallback(
@@ -251,8 +248,8 @@ const PublicRetrieverList: React.FC = () => {
   };
 
   const retrieverToFormData = (retriever: AdminPublicRetriever): RetrieverFormData => {
-    const json = retriever.json as RetrieverCRD;
-    const spec = json?.spec || {};
+    const json = retriever.json;
+    const spec = json?.spec || ({} as RetrieverCRD['spec']);
     const storageConfig = spec?.storageConfig || {};
     const indexStrategy = storageConfig?.indexStrategy || {};
 
@@ -646,11 +643,7 @@ const PublicRetrieverList: React.FC = () => {
               className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7"
               onClick={() => setShowApiKey(!showApiKey)}
             >
-              {showApiKey ? (
-                <EyeSlashIcon className="w-4 h-4" />
-              ) : (
-                <EyeIcon className="w-4 h-4" />
-              )}
+              {showApiKey ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
             </Button>
           </div>
         </div>
@@ -668,7 +661,9 @@ const PublicRetrieverList: React.FC = () => {
           }
         >
           <SelectTrigger className="bg-base">
-            <SelectValue placeholder={t('admin:public_retrievers.form.index_strategy_placeholder')} />
+            <SelectValue
+              placeholder={t('admin:public_retrievers.form.index_strategy_placeholder')}
+            />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="per_user">
