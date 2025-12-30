@@ -175,7 +175,10 @@ export function CreateKnowledgeBaseDialog({
                 <AccordionTrigger className="text-sm font-medium hover:no-underline">
                   {t('knowledge:document.advancedSettings.title')}
                 </AccordionTrigger>
-                <AccordionContent>
+                <AccordionContent
+                  forceMount
+                  className={accordionValue !== 'advanced' ? 'hidden' : ''}
+                >
                   <div className="space-y-4 pt-2">
                     <p className="text-xs text-text-muted">
                       {t('knowledge:document.advancedSettings.collapsed')}

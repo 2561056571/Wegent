@@ -6,7 +6,6 @@
 Base storage backend interface for RAG functionality.
 """
 
-import hashlib
 import logging
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar, Dict, List, Optional
@@ -86,12 +85,14 @@ class BaseStorageBackend(ABC):
 
         Strategies:
         - fixed: Use a single fixed index name (requires fixedName)
-        - rolling: Use rolling indices based on knowledge_id hash (uses prefix)
+        - rolling: Use rolling indices based on numeric knowledge_id (uses prefix)
+                   Groups N knowledge bases per index, where N = rollingStep (default 10)
+                   e.g., step=10: kb_id 1-10 -> index_0, kb_id 11-20 -> index_10, etc.
         - per_dataset: Use separate index per knowledge base (default)
         - per_user: Use separate index per user (requires user_id)
 
         Args:
-            knowledge_id: Knowledge base ID
+            knowledge_id: Knowledge base ID (must be numeric string for rolling mode)
             **kwargs: Additional parameters (e.g., user_id for per_user strategy)
 
         Returns:
@@ -122,19 +123,27 @@ class BaseStorageBackend(ABC):
             if not isinstance(step, int) or step <= 0:
                 raise ValueError(f"rollingStep must be a positive integer, got: {step}")
 
-            # Deterministic hash-based sharding using MD5
-            # 1. Hash the knowledge_id to get a large integer (MD5 produces 128-bit hash)
-            hash_val = int(hashlib.md5(knowledge_id.encode()).hexdigest(), 16)
-            # 2. Floor divide by step to get bucket number, then multiply by step
-            #    This groups knowledge_ids into buckets based on their hash values
-            #    Index names follow pattern: prefix_index_N where N is a multiple of step
-            #    The hash space is very large (~3.4x10^38), allowing virtually unlimited buckets
-            index_base = (hash_val // step) * step
+            # Convert knowledge_id to integer for bucket calculation
+            # knowledge_id is expected to be a numeric string (e.g., "1", "2", "123")
+            try:
+                kb_id_num = int(knowledge_id)
+            except ValueError:
+                raise ValueError(
+                    f"knowledge_id must be a numeric value for 'rolling' mode, got: {knowledge_id}"
+                )
+
+            # Calculate index base using floor division
+            # e.g., step=10: kb_id 1-10 -> index_0, kb_id 11-20 -> index_10, etc.
+            # Using (kb_id_num - 1) to make it 0-indexed:
+            #   kb_id 1-10 -> bucket 0 -> index_0
+            #   kb_id 11-20 -> bucket 1 -> index_10
+            bucket_num = (kb_id_num - 1) // step if kb_id_num > 0 else 0
+            index_base = bucket_num * step
             index_name = f"{prefix}_{self.INDEX_PREFIX}_{index_base}"
 
             logger.debug(
-                f"Rolling index: step={step}, hash_val={hash_val}, "
-                f"index_base={index_base}, index_name={index_name}"
+                f"Rolling index: step={step}, kb_id_num={kb_id_num}, "
+                f"bucket_num={bucket_num}, index_base={index_base}, index_name={index_name}"
             )
             return index_name
         elif mode == "per_dataset":

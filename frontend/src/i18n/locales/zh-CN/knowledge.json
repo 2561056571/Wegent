@@ -134,7 +134,8 @@
         "user": "个人",
         "public": "公共",
         "group": "组"
-      }
+      },
+      "searchPlaceholder": "搜索..."
     },
     "splitter": {
       "title": "分段设置",
