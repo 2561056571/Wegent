@@ -9,7 +9,8 @@
     "clear": "Clear Chat",
     "copy": "Copy",
     "regenerate": "Regenerate",
-    "stop": "Stop"
+    "stop": "Stop",
+    "retry": "Retry"
   },
   "status": {
     "typing": "AI is typing...",
@@ -48,7 +49,21 @@
     "content_recovered": "Content Recovered",
     "content_recovered_desc": "Content has been recovered after page refresh",
     "content_incomplete": "Response Incomplete",
-    "content_incomplete_desc": "Connection was lost, this is the partial content generated"
+    "content_incomplete_desc": "Connection was lost, this is the partial content generated",
+    "like": "Like",
+    "dislike": "Dislike",
+    "searching": "Searching",
+    "searched_for": "Searched for",
+    "results": "results",
+    "using_tool": "Using tool",
+    "used_tool": "Used tool",
+    "times": "times",
+    "used_tools": "Used tools",
+    "using_tools": "Using tools",
+    "tool_completed": "Tool completed",
+    "query": "Query",
+    "search_completed": "Search completed",
+    "found": "Found"
   },
   "shared_task": {
     "share_task": "Share",
@@ -142,7 +157,16 @@
   "send_shortcut_cmd_enter_mac": "⌘+Enter to send, Enter for new line",
   "send_shortcut_cmd_enter_win": "Ctrl+Enter to send, Enter for new line",
   "errors": {
-    "payload_too_large": "Content too large: conversation history or attachment exceeds limit, please start a new conversation or reduce attachment size"
+    "request_failed": "LLM API request failed",
+    "request_failed_retry": "LLM API request failed, please click retry",
+    "model_unsupported": "Current model is not supported, please switch to a different model",
+    "payload_too_large": "Content too large: conversation history or attachment exceeds limit, please start a new conversation or reduce attachment size",
+    "llm_unsupported": "Current model does not support this request (e.g., multi-modal messages). Please switch to a different model",
+    "llm_error": "Model error: The model is temporarily unavailable. Please try again later",
+    "invalid_parameter": "Invalid parameter: Request parameters are incorrect, please check your input",
+    "network_error": "Network error: Please check your connection and try again",
+    "timeout_error": "Request timeout: Service response time exceeded, please try again later",
+    "generic_error": "Request failed: Unknown error, please try again or contact administrator"
   },
   "clarification": {
     "title": "Smart Follow-up",
@@ -201,6 +225,10 @@
     "enable": "Enable web search",
     "disable": "Disable web search",
     "select_engine": "Select search engine"
+  },
+  "deep_thinking": {
+    "enable": "Enable deep thinking",
+    "disable": "Disable deep thinking"
   },
   "clarification_toggle": {
     "enable": "Enable smart follow-up mode",
@@ -292,5 +320,35 @@
   "common": {
     "cancel": "Cancel",
     "close": "Close"
+  },
+  "correction": {
+    "enable": "Enable AI correction mode",
+    "disable": "Disable AI correction mode",
+    "select_model": "Select Correction Model",
+    "select_model_desc": "Choose a model to evaluate and correct AI responses",
+    "search_model": "Search models...",
+    "no_models": "No models found",
+    "public_model": "Public Model",
+    "user_model": "Custom Model",
+    "evaluating": "Evaluating response...",
+    "result_title": "AI Correction Assessment",
+    "scores": "Scores",
+    "accuracy": "Accuracy",
+    "logic": "Logic",
+    "completeness": "Completeness",
+    "issues_found": "Issues Found",
+    "no_corrections_needed": "Answer is correct, no corrections needed",
+    "summary": "Summary",
+    "improved_answer": "Improved Answer",
+    "retry": "Retry",
+    "retry_evaluation": "Retry Evaluation",
+    "apply": "Apply",
+    "applying": "Applying...",
+    "applied": "Applied",
+    "apply_success": "Successfully applied the improved answer",
+    "apply_failed": "Failed to apply the improved answer",
+    "no_improvement_needed": "No improved answer provided",
+    "show_details": "Show Evaluation Details",
+    "hide_details": "Hide Evaluation Details"
   }
 }

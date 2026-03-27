@@ -3,25 +3,75 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from enum import Enum
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.schemas.kind import RetrieverRef
+from app.schemas.kind import EmbeddingModelRef, RetrieverRef
 
 
 class RetrievalMode(str, Enum):
     """Retrieval mode enum."""
 
     VECTOR = "vector"  # Pure vector search
+    KEYWORD = "keyword"  # Pure BM25 keyword search (full-text search)
     HYBRID = "hybrid"  # Hybrid search (vector + BM25)
 
 
-class EmbeddingModelRef(BaseModel):
-    """Reference to an embedding Model CRD."""
+class SplitterType(str, Enum):
+    """Document splitter type enum."""
 
-    name: str = Field(..., description="Model name")
-    namespace: str = Field("default", description="Model namespace")
+    SEMANTIC = "semantic"  # Semantic-based splitting using embeddings
+    SENTENCE = "sentence"  # Sentence/text-based splitting with separators
+
+
+class SemanticSplitterConfig(BaseModel):
+    """Configuration for semantic splitter."""
+
+    type: Literal["semantic"] = "semantic"
+    buffer_size: int = Field(
+        1, ge=1, le=10, description="Buffer size for semantic splitter"
+    )
+    breakpoint_percentile_threshold: int = Field(
+        95,
+        ge=50,
+        le=100,
+        description="Percentile threshold for determining breakpoints",
+    )
+
+
+class SentenceSplitterConfig(BaseModel):
+    """Configuration for sentence splitter."""
+
+    type: Literal["sentence"] = "sentence"
+    chunk_size: int = Field(
+        1024, ge=128, le=8192, description="Maximum chunk size in characters"
+    )
+    chunk_overlap: int = Field(
+        200,
+        ge=0,
+        le=2048,
+        description="Number of characters to overlap between chunks",
+    )
+    separator: str = Field(
+        "\n\n",
+        description="Separator for splitting. Common options: '\\n\\n' (paragraph, default), '\\n' (newline), ' ' (space), '.' (sentence)",
+    )
+
+    @field_validator("chunk_overlap")
+    @classmethod
+    def validate_overlap(cls, v, info):
+        """Validate that chunk_overlap is less than chunk_size."""
+        chunk_size = info.data.get("chunk_size", 1024)
+        if v >= chunk_size:
+            raise ValueError(
+                f"chunk_overlap ({v}) must be less than chunk_size ({chunk_size})"
+            )
+        return v
+
+
+# Union type for splitter configuration
+SplitterConfig = Union[SemanticSplitterConfig, SentenceSplitterConfig]
 
 
 class HybridWeights(BaseModel):
@@ -67,7 +117,7 @@ class RetrieveRequest(BaseModel):
     )
     retrieval_mode: RetrievalMode = Field(
         RetrievalMode.VECTOR,
-        description="Retrieval mode: 'vector' for pure vector search, 'hybrid' for vector + BM25",
+        description="Retrieval mode: 'vector' for pure vector search, 'keyword' for pure BM25 keyword search, 'hybrid' for vector + BM25",
     )
     hybrid_weights: Optional[HybridWeights] = Field(
         None,

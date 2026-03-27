@@ -10,6 +10,49 @@ export type DocumentStatus = 'enabled' | 'disabled';
 
 export type KnowledgeResourceScope = 'personal' | 'group' | 'all';
 
+// Retrieval Config types
+export interface RetrievalConfig {
+  retriever_name: string;
+  retriever_namespace: string;
+  embedding_config: {
+    model_name: string;
+    model_namespace: string;
+  };
+  retrieval_mode?: 'vector' | 'keyword' | 'hybrid';
+  top_k?: number;
+  score_threshold?: number;
+  hybrid_weights?: {
+    vector_weight: number;
+    keyword_weight: number;
+  };
+}
+
+// Splitter Config types
+export type SplitterType = 'sentence' | 'semantic';
+
+// Base splitter config
+export interface BaseSplitterConfig {
+  type: SplitterType;
+}
+
+// Sentence splitter config
+export interface SentenceSplitterConfig extends BaseSplitterConfig {
+  type: 'sentence';
+  separator?: string;
+  chunk_size?: number;
+  chunk_overlap?: number;
+}
+
+// Semantic splitter config
+export interface SemanticSplitterConfig extends BaseSplitterConfig {
+  type: 'semantic';
+  buffer_size?: number; // 1-10, default 1
+  breakpoint_percentile_threshold?: number; // 50-100, default 95
+}
+
+// Union type for splitter config
+export type SplitterConfig = SentenceSplitterConfig | SemanticSplitterConfig;
+
 // Knowledge Base types
 export interface KnowledgeBase {
   id: number;
@@ -19,6 +62,7 @@ export interface KnowledgeBase {
   namespace: string;
   document_count: number;
   is_active: boolean;
+  retrieval_config?: RetrievalConfig;
   created_at: string;
   updated_at: string;
 }
@@ -27,11 +71,23 @@ export interface KnowledgeBaseCreate {
   name: string;
   description?: string;
   namespace?: string;
+  retrieval_config?: Partial<RetrievalConfig>;
+}
+
+export interface RetrievalConfigUpdate {
+  retrieval_mode?: 'vector' | 'keyword' | 'hybrid';
+  top_k?: number;
+  score_threshold?: number;
+  hybrid_weights?: {
+    vector_weight: number;
+    keyword_weight: number;
+  };
 }
 
 export interface KnowledgeBaseUpdate {
   name?: string;
   description?: string;
+  retrieval_config?: RetrievalConfigUpdate;
 }
 
 export interface KnowledgeBaseListResponse {
@@ -50,6 +106,7 @@ export interface KnowledgeDocument {
   status: DocumentStatus;
   user_id: number;
   is_active: boolean;
+  splitter_config?: SplitterConfig;
   created_at: string;
   updated_at: string;
 }
@@ -59,11 +116,13 @@ export interface KnowledgeDocumentCreate {
   name: string;
   file_extension: string;
   file_size: number;
+  splitter_config?: Partial<SplitterConfig>;
 }
 
 export interface KnowledgeDocumentUpdate {
   name?: string;
   status?: DocumentStatus;
+  splitter_config?: Partial<SplitterConfig>;
 }
 
 export interface KnowledgeDocumentListResponse {

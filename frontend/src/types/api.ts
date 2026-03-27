@@ -12,6 +12,7 @@ export interface QuickAccessConfig {
 
 export interface UserPreferences {
   send_key: 'enter' | 'cmd_enter';
+  search_key?: 'cmd_k' | 'cmd_f' | 'disabled';
   quick_access?: QuickAccessConfig;
 }
 
@@ -54,6 +55,7 @@ export interface GitInfo {
 export interface Bot {
   id: number;
   name: string;
+  namespace?: string; // Namespace for group bots (default: 'default')
   shell_name: string; // Shell name user selected (e.g., 'ClaudeCode', 'my-custom-shell')
   shell_type: string; // Actual agent type (e.g., 'ClaudeCode', 'Agno', 'Dify')
   agent_config: Record<string, unknown>;
@@ -249,11 +251,32 @@ export interface TaskDetail {
   member_count?: number; // Number of active members in the group
 }
 
+/** Correction data stored in subtask.result.correction */
+export interface CorrectionData {
+  model_id: string;
+  model_name?: string;
+  scores: {
+    accuracy: number;
+    logic: number;
+    completeness: number;
+  };
+  corrections: Array<{
+    issue: string;
+    suggestion: string;
+  }>;
+  summary: string;
+  improved_answer: string;
+  is_correct: boolean;
+  corrected_at?: string;
+}
+
 /** Subtask result structure */
 export interface SubtaskResult {
   thinking?: unknown[];
   value?: string | { workbench?: WorkbenchData };
   workbench?: WorkbenchData;
+  /** Persisted correction data from AI correction mode */
+  correction?: CorrectionData;
   [key: string]: unknown;
 }
 
@@ -427,6 +450,13 @@ export interface DifyParametersSchema {
 // Attachment Types
 export type AttachmentStatus = 'uploading' | 'parsing' | 'ready' | 'failed';
 
+export interface TruncationInfo {
+  is_truncated: boolean;
+  original_length?: number | null;
+  truncated_length?: number | null;
+  truncation_message_key?: string | null;
+}
+
 export interface Attachment {
   id: number;
   filename: string;
@@ -435,9 +465,11 @@ export interface Attachment {
   status: AttachmentStatus;
   text_length?: number | null;
   error_message?: string | null;
+  error_code?: string | null;
   subtask_id?: number | null;
   file_extension: string;
   created_at: string;
+  truncation_info?: TruncationInfo | null;
 }
 
 export interface AttachmentUploadState {
@@ -446,6 +478,12 @@ export interface AttachmentUploadState {
   isUploading: boolean;
   uploadProgress: number;
   error: string | null;
+}
+
+export interface MultiAttachmentUploadState {
+  attachments: Attachment[];
+  uploadingFiles: Map<string, { file: File; progress: number }>;
+  errors: Map<string, string>;
 }
 
 // Quick Access Types
@@ -493,3 +531,16 @@ export interface SystemConfigResponse {
 export interface SystemConfigUpdate {
   teams: number[];
 }
+
+// Knowledge Base / RAG Types
+export interface KnowledgeBaseRef {
+  knowledge_id: number; // Knowledge base ID (database ID)
+  retriever_name: string;
+  retriever_namespace: string;
+}
+
+// Import KnowledgeBase types from knowledge.ts to avoid duplication
+export type {
+  KnowledgeBase,
+  KnowledgeBaseListResponse as KnowledgeBasesResponse,
+} from './knowledge';

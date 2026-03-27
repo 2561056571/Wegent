@@ -31,7 +31,7 @@ export function DocumentItem({
   selected = false,
   onSelect,
 }: DocumentItemProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation('knowledge');
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -101,7 +101,7 @@ export function DocumentItem({
           <button
             className="p-1 rounded-md text-primary hover:bg-primary/10 transition-colors"
             onClick={handleEdit}
-            title={t('actions.edit')}
+            title={t('common:actions.edit')}
           >
             <Pencil className="w-3.5 h-3.5" />
           </button>
@@ -123,12 +123,21 @@ export function DocumentItem({
         <span className="text-xs text-text-muted">{formatDateTime(document.created_at)}</span>
       </div>
 
+      {/* Index status (is_active) */}
+      <div className="w-16 flex-shrink-0 text-center">
+        <Badge variant={document.is_active ? 'success' : 'warning'} size="sm">
+          {document.is_active
+            ? t('document.document.indexStatus.available')
+            : t('document.document.indexStatus.unavailable')}
+        </Badge>
+      </div>
+
       {/* Status badge */}
       <div className="w-16 flex-shrink-0 text-center">
         <Badge variant={document.status === 'enabled' ? 'success' : 'secondary'} size="sm">
           {document.status === 'enabled'
-            ? t('knowledge.document.document.status.enabled')
-            : t('knowledge.document.document.status.disabled')}
+            ? t('document.document.status.enabled')
+            : t('document.document.status.disabled')}
         </Badge>
       </div>
 
@@ -140,8 +149,8 @@ export function DocumentItem({
             onClick={handleToggleStatus}
             title={
               document.status === 'enabled'
-                ? t('knowledge.document.document.disable')
-                : t('knowledge.document.document.enable')
+                ? t('document.document.disable')
+                : t('document.document.enable')
             }
           >
             {document.status === 'enabled' ? (
@@ -153,7 +162,7 @@ export function DocumentItem({
           <button
             className="p-1.5 rounded-md text-text-muted hover:text-error hover:bg-error/10 transition-colors"
             onClick={handleDelete}
-            title={t('actions.delete')}
+            title={t('common:actions.delete')}
           >
             <Trash2 className="w-4 h-4" />
           </button>

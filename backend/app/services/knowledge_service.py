@@ -9,6 +9,7 @@ Knowledge base and document service using kinds table.
 from typing import Optional
 
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.models.kind import Kind
 from app.models.knowledge import (
@@ -35,7 +36,6 @@ from app.services.group_permission import (
     get_effective_role_in_group,
     get_user_groups,
 )
-from app.services.kind_factory import KindServiceFactory
 
 
 class KnowledgeService:
@@ -63,6 +63,8 @@ class KnowledgeService:
         Raises:
             ValueError: If validation fails or permission denied
         """
+        from datetime import datetime
+
         # Check permission for team knowledge base
         if data.namespace != "default":
             role = get_effective_role_in_group(db, user_id, data.namespace)
@@ -77,8 +79,29 @@ class KnowledgeService:
                     "Only Owner or Maintainer can create knowledge base in this group"
                 )
 
-        # Check duplicate name
-        existing = (
+        # Generate unique name for the Kind record
+        kb_name = f"kb-{user_id}-{data.namespace}-{data.name}"
+
+        # Check duplicate by Kind.name (unique identifier)
+        existing_by_name = (
+            db.query(Kind)
+            .filter(
+                Kind.kind == "KnowledgeBase",
+                Kind.user_id == user_id,
+                Kind.namespace == data.namespace,
+                Kind.name == kb_name,
+                Kind.is_active == True,
+            )
+            .first()
+        )
+
+        if existing_by_name:
+            raise ValueError(
+                f"Knowledge base with name '{data.name}' already exists"
+            )
+
+        # Also check by display name in spec to prevent duplicates
+        existing_by_display = (
             db.query(Kind)
             .filter(
                 Kind.kind == "KnowledgeBase",
@@ -89,7 +112,7 @@ class KnowledgeService:
             .all()
         )
 
-        for kb in existing:
+        for kb in existing_by_display:
             kb_spec = kb.json.get("spec", {})
             if kb_spec.get("name") == data.name:
                 raise ValueError(
@@ -101,20 +124,36 @@ class KnowledgeService:
             apiVersion="agent.wecode.io/v1",
             kind="KnowledgeBase",
             metadata=ObjectMeta(
-                name=f"kb-{user_id}-{data.namespace}-{data.name}",  # Generate unique name
+                name=kb_name,
                 namespace=data.namespace,
             ),
             spec=KnowledgeBaseSpec(
                 name=data.name,
                 description=data.description or "",
-                document_count=0,
+                retrievalConfig=data.retrieval_config,
             ),
         )
 
-        # Use KindServiceFactory to create
-        kind_service = KindServiceFactory.get_service("KnowledgeBase")
-        kb_id = kind_service.create_resource(user_id, kb_crd.model_dump())
-        return kb_id
+        # Build resource data
+        resource_data = kb_crd.model_dump()
+        if "status" not in resource_data or resource_data["status"] is None:
+            resource_data["status"] = {"state": "Available"}
+
+        # Create Kind record directly using the passed db session
+        db_resource = Kind(
+            user_id=user_id,
+            kind="KnowledgeBase",
+            name=kb_name,
+            namespace=data.namespace,
+            json=resource_data,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+
+        db.add(db_resource)
+        db.flush()  # Flush to get the ID without committing
+
+        return db_resource.id
 
     @staticmethod
     def get_knowledge_base(
@@ -305,8 +344,25 @@ class KnowledgeService:
         if data.description is not None:
             spec["description"] = data.description
 
+        # Update retrieval config if provided (only allowed fields)
+        if data.retrieval_config is not None:
+            current_retrieval_config = spec.get("retrievalConfig", {})
+            if current_retrieval_config:
+                # Only update allowed fields, keep retriever and embedding_config unchanged
+                if data.retrieval_config.retrieval_mode is not None:
+                    current_retrieval_config["retrieval_mode"] = data.retrieval_config.retrieval_mode
+                if data.retrieval_config.top_k is not None:
+                    current_retrieval_config["top_k"] = data.retrieval_config.top_k
+                if data.retrieval_config.score_threshold is not None:
+                    current_retrieval_config["score_threshold"] = data.retrieval_config.score_threshold
+                if data.retrieval_config.hybrid_weights is not None:
+                    current_retrieval_config["hybrid_weights"] = data.retrieval_config.hybrid_weights.model_dump()
+                spec["retrievalConfig"] = current_retrieval_config
+
         kb_json["spec"] = spec
         kb.json = kb_json
+        # Mark JSON field as modified so SQLAlchemy detects the change
+        flag_modified(kb, "json")
 
         db.commit()
         db.refresh(kb)
@@ -319,7 +375,7 @@ class KnowledgeService:
         user_id: int,
     ) -> bool:
         """
-        Physically delete a knowledge base and its documents.
+        Delete a knowledge base.
 
         Args:
             db: Database session
@@ -330,7 +386,7 @@ class KnowledgeService:
             True if deleted, False if not found
 
         Raises:
-            ValueError: If permission denied
+            ValueError: If permission denied or knowledge base has documents
         """
         kb = KnowledgeService.get_knowledge_base(db, knowledge_base_id, user_id)
         if not kb:
@@ -345,15 +401,74 @@ class KnowledgeService:
                     "Only Owner or Maintainer can delete knowledge base in this group"
                 )
 
-        # Physically delete all documents in this knowledge base
-        db.query(KnowledgeDocument).filter(
-            KnowledgeDocument.kind_id == knowledge_base_id,
-        ).delete()
+        # Check if knowledge base has documents - prevent deletion if documents exist
+        document_count = KnowledgeService.get_document_count(db, knowledge_base_id)
+        if document_count > 0:
+            raise ValueError(
+                f"Cannot delete knowledge base with {document_count} document(s). "
+                "Please delete all documents first."
+            )
 
         # Physically delete the knowledge base
         db.delete(kb)
         db.commit()
         return True
+
+    @staticmethod
+    def get_document_count(
+        db: Session,
+        knowledge_base_id: int,
+    ) -> int:
+        """
+        Get the total document count for a knowledge base (all documents).
+
+        Args:
+            db: Database session
+            knowledge_base_id: Knowledge base ID
+
+        Returns:
+            Number of documents in the knowledge base
+        """
+        from sqlalchemy import func
+
+        return (
+            db.query(func.count(KnowledgeDocument.id))
+            .filter(
+                KnowledgeDocument.kind_id == knowledge_base_id,
+            )
+            .scalar()
+            or 0
+        )
+
+    @staticmethod
+    def get_active_document_count(
+        db: Session,
+        knowledge_base_id: int,
+    ) -> int:
+        """
+        Get the active document count for a knowledge base.
+        Only counts documents that are indexed (is_active=True) and enabled (status=enabled).
+        Used for AI chat integration to show available documents.
+
+        Args:
+            db: Database session
+            knowledge_base_id: Knowledge base ID
+
+        Returns:
+            Number of active and enabled documents in the knowledge base
+        """
+        from sqlalchemy import func
+
+        return (
+            db.query(func.count(KnowledgeDocument.id))
+            .filter(
+                KnowledgeDocument.kind_id == knowledge_base_id,
+                KnowledgeDocument.is_active == True,
+                KnowledgeDocument.status == DocumentStatus.ENABLED,
+            )
+            .scalar()
+            or 0
+        )
 
     # ============== Knowledge Document Operations ==============
 
@@ -399,15 +514,9 @@ class KnowledgeService:
             file_extension=data.file_extension,
             file_size=data.file_size,
             user_id=user_id,
+            splitter_config=data.splitter_config.model_dump() if data.splitter_config else None,  # Save splitter_config
         )
         db.add(document)
-
-        # Update document count in Kind spec
-        kb_json = kb.json
-        spec = kb_json.get("spec", {})
-        spec["document_count"] = spec.get("document_count", 0) + 1
-        kb_json["spec"] = spec
-        kb.json = kb_json
 
         db.commit()
         db.refresh(document)
@@ -434,7 +543,6 @@ class KnowledgeService:
             db.query(KnowledgeDocument)
             .filter(
                 KnowledgeDocument.id == document_id,
-                KnowledgeDocument.is_active == True,
             )
             .first()
         )
@@ -475,7 +583,6 @@ class KnowledgeService:
             db.query(KnowledgeDocument)
             .filter(
                 KnowledgeDocument.kind_id == knowledge_base_id,
-                KnowledgeDocument.is_active == True,
             )
             .order_by(KnowledgeDocument.created_at.desc())
             .all()
@@ -527,6 +634,9 @@ class KnowledgeService:
         if data.status is not None:
             doc.status = DocumentStatus(data.status.value)
 
+        if data.splitter_config is not None:
+            doc.splitter_config = data.splitter_config.model_dump()
+
         db.commit()
         db.refresh(doc)
         return doc
@@ -538,7 +648,7 @@ class KnowledgeService:
         user_id: int,
     ) -> bool:
         """
-        Physically delete a document.
+        Physically delete a document, its RAG index, and associated attachment.
 
         Args:
             db: Database session
@@ -551,6 +661,33 @@ class KnowledgeService:
         Raises:
             ValueError: If permission denied
         """
+        import asyncio
+        import logging
+
+        from app.services.adapters.retriever_kinds import retriever_kinds_service
+        from app.services.attachment import attachment_service
+        from app.services.rag.document_service import DocumentService
+        from app.services.rag.storage.factory import create_storage_backend
+
+        logger = logging.getLogger(__name__)
+
+        def run_async(coro):
+            """
+            Run an async coroutine safely, handling the case where
+            an event loop is already running (e.g., in FastAPI async context).
+            """
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                # No running event loop, safe to use asyncio.run()
+                return asyncio.run(coro)
+            else:
+                # Event loop is already running, create a new task
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, coro)
+                    return future.result()
+
         doc = KnowledgeService.get_document(db, document_id, user_id)
         if not doc:
             return False
@@ -569,17 +706,96 @@ class KnowledgeService:
                     "Only Owner or Maintainer can delete documents from this knowledge base"
                 )
 
-        # Update document count
-        if kb:
-            kb_json = kb.json
-            spec = kb_json.get("spec", {})
-            spec["document_count"] = max(0, spec.get("document_count", 0) - 1)
-            kb_json["spec"] = spec
-            kb.json = kb_json
+        # Store document_id (used as doc_ref in RAG), kind_id, and attachment_id before deletion for cleanup
+        doc_ref = str(doc.id)  # document_id is used as doc_ref in RAG indexing
+        kind_id = doc.kind_id
+        attachment_id = doc.attachment_id
 
-        # Physically delete document
+        # Physically delete document from database
         db.delete(doc)
         db.commit()
+
+        # Delete RAG index if knowledge base has retrieval_config
+        if kb:
+            spec = kb.json.get("spec", {})
+            retrieval_config = spec.get("retrievalConfig")
+
+            if retrieval_config:
+                retriever_name = retrieval_config.get("retriever_name")
+                retriever_namespace = retrieval_config.get("retriever_namespace", "default")
+
+                if retriever_name:
+                    try:
+                        # Get retriever from database
+                        retriever_crd = retriever_kinds_service.get_retriever(
+                            db=db,
+                            user_id=user_id,
+                            name=retriever_name,
+                            namespace=retriever_namespace,
+                        )
+
+                        if retriever_crd:
+                            # Create storage backend from retriever
+                            storage_backend = create_storage_backend(retriever_crd)
+
+                            # Create document service
+                            doc_service = DocumentService(storage_backend=storage_backend)
+
+                            # Get the correct user_id for index naming
+                            # For group knowledge bases, use the KB creator's user_id
+                            # This ensures we delete from the same index where documents were stored
+                            if kb.namespace == "default":
+                                index_owner_user_id = user_id
+                            else:
+                                # Group knowledge base - use KB creator's user_id
+                                index_owner_user_id = kb.user_id
+
+                            # Delete RAG index using the correct user_id
+                            run_async(
+                                doc_service.delete_document(
+                                    knowledge_id=str(kind_id),
+                                    doc_ref=doc_ref,
+                                    user_id=index_owner_user_id,
+                                )
+                            )
+                            logger.info(
+                                f"Deleted RAG index for doc_ref '{doc_ref}' in knowledge base {kind_id} "
+                                f"(index_owner_user_id={index_owner_user_id})"
+                            )
+                        else:
+                            logger.warning(
+                                f"Retriever {retriever_name} not found, skipping RAG index deletion"
+                            )
+                    except Exception as e:
+                        # Log error but don't fail the document deletion
+                        logger.error(
+                            f"Failed to delete RAG index for doc_ref '{doc_ref}': {str(e)}",
+                            exc_info=True,
+                        )
+
+        # Delete associated attachment if exists
+        if attachment_id:
+            try:
+                deleted = attachment_service.delete_attachment(
+                    db=db,
+                    attachment_id=attachment_id,
+                    user_id=user_id,
+                )
+                if deleted:
+                    logger.info(
+                        f"Deleted attachment {attachment_id} for document {document_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"Failed to delete attachment {attachment_id} for document {document_id}"
+                    )
+            except Exception as e:
+                # Log error but don't fail the document deletion
+                logger.error(
+                    f"Failed to delete attachment {attachment_id}: {str(e)}",
+                    exc_info=True,
+                )
+
         return True
 
     # ============== Accessible Knowledge Query ==============
@@ -617,7 +833,7 @@ class KnowledgeService:
                 id=kb.id,
                 name=kb.json.get("spec", {}).get("name", ""),
                 description=kb.json.get("spec", {}).get("description"),
-                document_count=kb.json.get("spec", {}).get("document_count", 0),
+                document_count=KnowledgeService.get_active_document_count(db, kb.id),
                 updated_at=kb.updated_at,
             )
             for kb in personal_kbs
@@ -661,9 +877,7 @@ class KnowledgeService:
                                 id=kb.id,
                                 name=kb.json.get("spec", {}).get("name", ""),
                                 description=kb.json.get("spec", {}).get("description"),
-                                document_count=kb.json.get("spec", {}).get(
-                                    "document_count", 0
-                                ),
+                                document_count=KnowledgeService.get_active_document_count(db, kb.id),
                                 updated_at=kb.updated_at,
                             )
                             for kb in group_kbs
